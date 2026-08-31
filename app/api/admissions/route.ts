@@ -1,29 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-
-const admPath = path.join(process.cwd(), "data", "admissions.json");
-
-function readAdm() {
-  try { return JSON.parse(fs.readFileSync(admPath, "utf-8")); } catch { return []; }
-}
-function writeAdm(list: any[]) {
-  fs.writeFileSync(admPath, JSON.stringify(list, null, 2));
-}
-
-export async function GET(req: NextRequest) {
-  // allow user to query own admissions via ?email= or ?phone=
-  const { searchParams } = new URL(req.url);
-  const email = searchParams.get("email")?.toLowerCase();
-  const phone = searchParams.get("phone");
-  const list = readAdm();
-  if (email || phone) {
-    const filtered = list.filter((a: any) => (email && a.email.toLowerCase() === email) || (phone && a.phone === phone));
-    return NextResponse.json(filtered, { headers: { "Cache-Control": "no-store" } });
-  }
-  // public shouldn't list all; return limited
-  return NextResponse.json([], { headers: { "Cache-Control": "no-store" } });
-}
+import { prisma } from "@/lib/prisma";
 
 const feeMap: Record<string, number> = { SI: 25000, Constable: 18000, Groups: 22000, "SSC GD": 15000, Defence: 20000, Army: 20000, UPSC: 45000 };
 function getFee(course: string, mode: string) {
@@ -48,33 +24,30 @@ export async function POST(req: NextRequest) {
     if (!screenshot) return NextResponse.json({ error: "UPI requires screenshot" }, { status: 400 });
   }
   if (pm === "bank" && !transactionId) return NextResponse.json({ error: "Bank transfer requires transaction ID" }, { status: 400 });
-  // cash needs nothing
 
-  const list = readAdm();
-  const id = `ADM-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   const fee = amount ? Number(amount) : getFee(String(course), String(mode || "Residential"));
-  const entry = {
-    id,
-    name: String(name).trim(),
-    fatherName: String(fatherName).trim(),
-    phone: String(phone).trim(),
-    email: String(email).trim().toLowerCase(),
-    address: String(address).trim(),
-    reference: String(reference || "").trim(),
-    branch: String(branch).trim(),
-    course: String(course),
-    courseType: String(courseType || "Regular"),
-    medium: String(medium || "Telugu"),
-    mode: String(mode || "Residential"),
-    batchId: batchId || null,
-    paymentMethod: pm,
-    transactionId: transactionId ? String(transactionId).trim() : null,
-    screenshot: screenshot ? String(screenshot).slice(0, 500000) : null,
-    amount: fee,
-    status: "pending",
-    createdAt: new Date().toISOString(),
-  };
-  list.unshift(entry);
-  writeAdm(list);
-  return NextResponse.json({ ok: true, id, status: "pending" });
+  const entry = await prisma.admission.create({
+    data: {
+      id: `ADM-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      name: String(name).trim(),
+      fatherName: String(fatherName).trim(),
+      phone: String(phone).trim(),
+      email: String(email).trim().toLowerCase(),
+      address: String(address).trim(),
+      reference: String(reference || "").trim(),
+      branch: String(branch).trim(),
+      course: String(course),
+      courseType: String(courseType || "Regular"),
+      medium: String(medium || "Telugu"),
+      mode: String(mode || "Residential"),
+      batchId: batchId || null,
+      paymentMethod: pm,
+      transactionId: transactionId ? String(transactionId).trim() : null,
+      screenshot: screenshot ? String(screenshot).slice(0, 500000) : null,
+      amount: fee,
+      feeAmount: fee,
+      status: "pending",
+    },
+  });
+  return NextResponse.json({ ok: true, id: entry.id, status: "pending" });
 }

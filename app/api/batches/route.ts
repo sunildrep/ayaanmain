@@ -1,13 +1,7 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
+import { prisma } from "@/lib/prisma";
 
 export async function GET() {
-  const p = path.join(process.cwd(), "data", "batches.json");
-  try {
-    const data = JSON.parse(fs.readFileSync(p, "utf-8"));
-    return NextResponse.json(data);
-  } catch {
-    return NextResponse.json([]);
-  }
+  const batches = await prisma.batch.findMany({ where: { status: "open" }, orderBy: { startDate: "asc" } });
+  return NextResponse.json(batches);
 }

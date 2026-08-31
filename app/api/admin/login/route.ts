@@ -1,43 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
+import { prisma } from "@/lib/prisma";
+import bcrypt from "bcryptjs";
+import crypto from "crypto";
 
-const fallbackUser = process.env.ADMIN_USER || "admin";
-const fallbackPass = process.env.ADMIN_PASS || "Ayaan@2026";
-
-function getAdmins(): any[] {
-  try {
-    const p = path.join(process.cwd(), "data", "admins.json");
-    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, "utf-8"));
-  } catch {}
-  return [{ username: fallbackUser, password: fallbackPass, role: "super_admin", name: "Super Admin" }];
-}
+const SESSION_EXPIRY_DAYS = 7;
 
 export async function POST(req: NextRequest) {
   const { username, password } = await req.json();
-  const admins = getAdmins();
-  const user = admins.find((a: any) => a.username === username && a.password === password);
-  if (user) {
-    const res = NextResponse.json({ ok: true, role: user.role, name: user.name });
-    res.cookies.set("ayaan_admin", "1", { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 8 });
-    res.cookies.set("ayaan_admin_role", user.role, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 8 });
-    res.cookies.set("ayaan_admin_user", user.username, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 8 });
+  const admin = await prisma.admin.findUnique({ where: { username } });
+  if (admin && admin.passwordHash && bcrypt.compareSync(password, admin.passwordHash)) {
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+    await prisma.session.create({
+      data: { token, userId: admin.username, role: admin.role, username: admin.username, name: admin.name, expiresAt },
+    });
+    const res = NextResponse.json({ ok: true, role: admin.role, name: admin.name });
+    res.cookies.set("ayaan_session", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+      maxAge: 60 * 60 * 24 * SESSION_EXPIRY_DAYS,
+    });
     return res;
   }
   return NextResponse.json({ ok: false, error: "Invalid credentials" }, { status: 401 });
 }
 
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
+  const token = req.cookies.get("ayaan_session")?.value;
+  if (token) await prisma.session.deleteMany({ where: { token } });
   const res = NextResponse.json({ ok: true });
-  res.cookies.set("ayaan_admin", "", { path: "/", maxAge: 0 });
-  res.cookies.set("ayaan_admin_role", "", { path: "/", maxAge: 0 });
-  res.cookies.set("ayaan_admin_user", "", { path: "/", maxAge: 0 });
+  res.cookies.set("ayaan_session", "", { path: "/", maxAge: 0 });
   return res;
 }
 
 export async function GET(req: NextRequest) {
-  const c = req.cookies.get("ayaan_admin")?.value;
-  const role = req.cookies.get("ayaan_admin_role")?.value || "super_admin";
-  const user = req.cookies.get("ayaan_admin_user")?.value || "admin";
-  return NextResponse.json({ authenticated: c === "1", role, user });
+  const token = req.cookies.get("ayaan_session")?.value;
+  if (!token) return NextResponse.json({ authenticated: false });
+  const session = await prisma.session.findUnique({ where: { token } });
+  if (!session || session.expiresAt < new Date()) {
+    if (session) await prisma.session.delete({ where: { token } });
+    return NextResponse.json({ authenticated: false });
+  }
+  return NextResponse.json({ authenticated: true, role: session.role, user: session.username });
 }

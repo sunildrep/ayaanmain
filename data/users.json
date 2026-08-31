@@ -12,7 +12,7 @@
     "courseType": "Regular",
     "medium": "Telugu",
     "mode": "Residential",
-    "passwordHash": "4b376c04005833b573ea889191ed587e88579d190385c28c8f4a13e37905495c",
+    "passwordHash": "$2b$10$2yG/928gXkQMcTxZhd2VQegJGqKKQ1.sst5GojaGEzEzwUDAG4FdW",
     "admissionId": null,
     "createdAt": "2026-08-31T05:33:07.003Z",
     "active": true

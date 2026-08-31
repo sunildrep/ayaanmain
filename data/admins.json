@@ -1,5 +1,20 @@
 [
-  { "username": "admin", "password": "Ayaan@2026", "role": "super_admin", "name": "Super Admin" },
-  { "username": "finance", "password": "Finance@2026", "role": "finance", "name": "Finance Admin" },
-  { "username": "admissions", "password": "Admissions@2026", "role": "admissions", "name": "Admissions Admin" }
+  {
+    "username": "admin",
+    "passwordHash": "$2b$10$B5fDZbQPeJMwa2cboApA9u6z3nFM7HfVCDv.CXoHmjs1Ws2P.cDJK",
+    "role": "super_admin",
+    "name": "Super Admin"
+  },
+  {
+    "username": "finance",
+    "passwordHash": "$2b$10$dPxLQVy/IB0UHkUi4sPLVuOB0qHfSZU.NoN/Px5U28JSpUOaP7fum",
+    "role": "finance",
+    "name": "Finance Admin"
+  },
+  {
+    "username": "admissions",
+    "passwordHash": "$2b$10$ChML7UBecy2/r6u.EiUxR.6/NaKGe8xSU.IFI.PXOEO/fTSRWn8o6",
+    "role": "admissions",
+    "name": "Admissions Admin"
+  }
 ]

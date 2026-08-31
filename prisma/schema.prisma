@@ -1,0 +1,217 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         String   // super_admin, finance, admissions
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("admins")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  fatherName    String?
+  email         String   @unique
+  phone         String   @unique
+  address       String?
+  reference     String?
+  branch        String?
+  course        String
+  courseType    String
+  medium        String
+  mode          String
+  passwordHash  String
+  admissionId   String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Admission {
+  id              String   @id @default(cuid())
+  name            String
+  fatherName      String
+  phone           String
+  email           String
+  address         String
+  reference       String?
+  branch          String
+  course          String
+  courseType      String
+  medium          String
+  mode            String
+  batchId         String?
+  paymentMethod   String   // cash, upi, bank
+  transactionId   String?
+  screenshot      String?  // base64 data URL
+  amount          Int
+  feeAmount       Int?
+  status          String   @default("pending") // pending, approved, rejected
+  paidAmount      Int?
+  dueDate         DateTime?
+  createdAt       DateTime @default(now())
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  manual          Boolean  @default(false)
+  studentId       String?
+
+  @@map("admissions")
+}
+
+model Payment {
+  id              String   @id @default(cuid())
+  admissionId     String
+  studentId       String?
+  name            String
+  phone           String
+  email           String
+  course          String
+  medium          String
+  mode            String
+  amount          Int
+  paidAmount      Int
+  dueDate         DateTime?
+  paymentMethod   String
+  transactionId   String?
+  screenshot      String?
+  status          String
+  createdAt       DateTime @default(now())
+  approvedAt      DateTime?
+
+  @@map("payments")
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  title       String
+  category    String
+  amount      Int
+  dueDate     DateTime
+  status      String   @default("pending") // pending, paid
+  vendor      String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("expenses")
+}
+
+model Batch {
+  id          String   @id @default(cuid())
+  course      String
+  medium      String
+  mode        String
+  startDate   DateTime
+  seats       Int
+  filled      Int      @default(0)
+  duration    String
+  status      String   @default("open") // open, closed
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("batches")
+}
+
+model Alumni {
+  id          String   @id @default(cuid())
+  name        String
+  role        String?
+  batch       String?
+  course      String
+  quote       String
+  video       String?
+  image       String?
+  featured    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("alumni")
+}
+
+model Lead {
+  id          String   @id @default(cuid())
+  name        String
+  phone       String
+  course      String?
+  medium      String?
+  mode        String?
+  batchId     String?
+  status      String   @default("new")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("leads")
+}
+
+model StoreItem {
+  id          String   @id @default(cuid())
+  name        String
+  price       Int
+  category    String
+  stock       Int      @default(0)
+  threshold   Int      @default(5)
+  sku         String?
+  image       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("store_items")
+}
+
+model Banner {
+  id          String   @id @default(cuid())
+  enabled     Boolean  @default(false)
+  message     String
+  type        String   @default("info") // info, warning, success, urgent
+  link        String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("banner")
+}
+
+model KnowledgeChunk {
+  id          String   @id @default(cuid())
+  category    String
+  keywords    String[] // stored as text[]
+  en          String
+  hi          String?
+  te          String?
+  source      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("knowledge_chunks")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  role      String   // super_admin, finance, admissions, student
+  username  String
+  name      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
+  @@map("sessions")
+}

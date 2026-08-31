@@ -1,1 +1,23 @@
-[]
+[
+  {
+    "id": "ADM-1788167299552-WJAC",
+    "name": "Test Student",
+    "fatherName": "Father",
+    "phone": "9876543211",
+    "email": "test@example.com",
+    "address": "Test",
+    "reference": "",
+    "branch": "Warangal",
+    "course": "SI",
+    "courseType": "Regular",
+    "medium": "Telugu",
+    "mode": "Residential",
+    "batchId": null,
+    "paymentMethod": "cash",
+    "transactionId": null,
+    "screenshot": null,
+    "amount": 35000,
+    "status": "pending",
+    "createdAt": "2026-08-31T09:08:19.552Z"
+  }
+]
