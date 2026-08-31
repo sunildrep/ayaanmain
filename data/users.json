@@ -1,0 +1,20 @@
+[
+  {
+    "id": "USR-1788154387002",
+    "name": "sunil V",
+    "fatherName": "srinivas v",
+    "email": "sunilsainath007@gmail.com",
+    "phone": "7396944744",
+    "address": "karimnagar",
+    "reference": "",
+    "branch": "Warangal",
+    "course": "SI",
+    "courseType": "Regular",
+    "medium": "Telugu",
+    "mode": "Residential",
+    "passwordHash": "4b376c04005833b573ea889191ed587e88579d190385c28c8f4a13e37905495c",
+    "admissionId": null,
+    "createdAt": "2026-08-31T05:33:07.003Z",
+    "active": true
+  }
+]

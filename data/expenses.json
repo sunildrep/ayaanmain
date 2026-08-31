@@ -1,0 +1,24 @@
+[
+  {
+    "id": "EXP-001",
+    "title": "Warangal Campus Rent - Aug",
+    "category": "Rent",
+    "amount": 75000,
+    "dueDate": "2026-09-05",
+    "status": "pending",
+    "vendor": "Mayuri Mall Management",
+    "notes": "2nd Floor Kishanpura",
+    "createdAt": "2026-08-28T00:00:00.000Z"
+  },
+  {
+    "id": "EXP-002",
+    "title": "Faculty - SI Batch Honorarium",
+    "category": "Faculty",
+    "amount": 45000,
+    "dueDate": "2026-09-10",
+    "status": "pending",
+    "vendor": "Senior Faculty Pool",
+    "notes": "3 faculty x 15k",
+    "createdAt": "2026-08-28T00:00:00.000Z"
+  }
+]

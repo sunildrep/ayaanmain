@@ -1,0 +1,98 @@
+[
+  {
+    "id": "ALU-001",
+    "name": "Sai Kumari",
+    "role": "Constable — Selected (Top Marks, Physical)",
+    "batch": "2020 • Warangal",
+    "course": "Constable",
+    "quote": "No Pain, No Gain, without accepting pain, we cant achieve anything. The entire faculty and department leaves no stone unturned to shape one's future. From Day 1, I started physical training and scored top marks and got a job. Thanks for your Support...",
+    "video": "https://www.youtube.com/watch?v=W0YW4FIleRU",
+    "image": "https://ayaaninstitute.in/website-assets/images/test.jpg",
+    "featured": true,
+    "createdAt": "2022-01-15"
+  },
+  {
+    "id": "ALU-002",
+    "name": "Sai Prasanna",
+    "role": "SI Aspirant — Cleared Multiple Competitive Exams",
+    "batch": "2019 • Hyderabad",
+    "course": "SI",
+    "quote": "Involvement on subject and practicing at ground level, with both of the training methods gave me final result. I scored in all the competitive exams by training in Ayaan Institute. Under Anwar Sir guidance most of us achieved our goal.",
+    "video": "https://www.youtube.com/watch?v=0kZmeH1eWhg",
+    "image": "https://ayaaninstitute.in/website-assets/images/test.jpg",
+    "featured": true,
+    "createdAt": "2022-01-15"
+  },
+  {
+    "id": "ALU-003",
+    "name": "T. Sai Charan",
+    "role": "Constable — Selected",
+    "batch": "2019 • Hanamkonda",
+    "course": "Constable",
+    "quote": "Failure is a stepping stone for Success. Ayaan is a great place to learn. It gives me great to say with pride that I got a job by training in this Institute. The relation with faculty and Anwar Sir is very cordial, which gave me an opportunity to excel in my area of interest.",
+    "video": "https://www.youtube.com/watch?v=tJ_i9WoAxp4",
+    "image": "https://ayaaninstitute.in/website-assets/images/test.jpg",
+    "featured": false,
+    "createdAt": "2022-01-15"
+  },
+  {
+    "id": "ALU-004",
+    "name": "Naresh",
+    "role": "Constable — Selected (1st Attempt) — Ex Auto Driver",
+    "batch": "2018 • Warangal",
+    "course": "Constable",
+    "quote": "Ground practice is a key role to get a job in department. I used to be an auto driver with economically low. 'Desire is more powerful'. In first attempt I got placed as a constable with guidance of Anwar Sir and faculty of Ayaan. My dream is to become SI and I'm striving to achieve it.",
+    "video": "https://www.youtube.com/watch?v=coj5KFzYE5A",
+    "image": "https://ayaaninstitute.in/website-assets/images/test.jpg",
+    "featured": true,
+    "createdAt": "2022-01-15"
+  },
+  {
+    "id": "ALU-005",
+    "name": "R. Sneha",
+    "role": "SI — Selected 2023",
+    "batch": "2022 • Residential",
+    "course": "SI",
+    "quote": "Residential campus changed everything — 4am study, daily tests, and Anwar Sir on ground. I cleared SI Prelims in first attempt with top 50 rank.",
+    "video": "",
+    "image": "",
+    "featured": true,
+    "createdAt": "2023-08-10"
+  },
+  {
+    "id": "ALU-006",
+    "name": "Mohd. Imran",
+    "role": "Indian Army — GD",
+    "batch": "2021 • Warangal",
+    "course": "Defence",
+    "quote": "From 1600m 9 minutes to 6:30 — L1-L3 training is real. Written faculty covered entire syllabus in 3 months.",
+    "video": "",
+    "image": "",
+    "featured": false,
+    "createdAt": "2022-06-01"
+  },
+  {
+    "id": "ALU-007",
+    "name": "K. Priya",
+    "role": "SSC GD — Selected",
+    "batch": "2022 • Online",
+    "course": "SSC GD",
+    "quote": "Online live + offline download saved me as a working student. Same faculty as offline, unlimited rewatch.",
+    "video": "",
+    "image": "",
+    "featured": false,
+    "createdAt": "2023-03-12"
+  },
+  {
+    "id": "ALU-008",
+    "name": "V. Karthik",
+    "role": "Group 1 — Interview Cleared",
+    "batch": "2020 • Hyderabad",
+    "course": "Groups",
+    "quote": "Current affairs daily + answer writing for Mains made the difference. Faculty guidance for interview was gold.",
+    "video": "",
+    "image": "",
+    "featured": false,
+    "createdAt": "2021-11-20"
+  }
+]

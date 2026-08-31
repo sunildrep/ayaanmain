@@ -1,0 +1,62 @@
+[
+  {
+    "id": "si-1787762578417",
+    "course": "SI",
+    "medium": "English",
+    "mode": "Offline",
+    "startDate": "2026-09-30",
+    "seats": 60,
+    "filled": 0,
+    "duration": "3 Months",
+    "status": "open",
+    "note": ""
+  },
+  {
+    "id": "si-1787762564639",
+    "course": "SI",
+    "medium": "Telugu",
+    "mode": "Residential",
+    "startDate": "2026-09-01",
+    "seats": 60,
+    "filled": 0,
+    "duration": "3 Months",
+    "status": "open",
+    "note": ""
+  },
+  {
+    "id": "si-telugu-res-01sep",
+    "course": "SI",
+    "medium": "Telugu",
+    "mode": "Residential",
+    "startDate": "2026-09-01",
+    "seats": 60,
+    "filled": 18,
+    "duration": "4 Months",
+    "status": "open",
+    "note": "Includes hostel + food + 3 grounds"
+  },
+  {
+    "id": "const-english-off-01sep",
+    "course": "Constable",
+    "medium": "English",
+    "mode": "Offline",
+    "startDate": "2026-09-01",
+    "seats": 80,
+    "filled": 42,
+    "duration": "3 Months",
+    "status": "open",
+    "note": "Day-scholar, Warangal & Hyderabad"
+  },
+  {
+    "id": "groups-off-15sep",
+    "course": "Groups",
+    "medium": "Telugu",
+    "mode": "Offline",
+    "startDate": "2026-09-15",
+    "seats": 50,
+    "filled": 11,
+    "duration": "3 Months",
+    "status": "open",
+    "note": "Group 1/2/3 - limited seats"
+  }
+]

@@ -1,0 +1,10 @@
+[
+  { "id": "SKU-001", "name": "Boots Ankle Shoes", "price": 2000, "category": "Footwear", "stock": 24, "threshold": 5, "image": "", "sku": "BOOTS-ANKLE-001" },
+  { "id": "SKU-002", "name": "Running T-Shirt (Honey Comb)", "price": 800, "category": "Apparel", "stock": 3, "threshold": 5, "image": "", "sku": "TEE-RUN-HC-002" },
+  { "id": "SKU-003", "name": "Spikes – 100m", "price": 1500, "category": "Equipment", "stock": 0, "threshold": 5, "image": "", "sku": "SPIKE-100M-003" },
+  { "id": "SKU-004", "name": "Military Rucksack Large", "price": 2000, "category": "Gear", "stock": 12, "threshold": 5, "image": "", "sku": "RUCK-L-004" },
+  { "id": "SKU-005", "name": "Tactical Flashlight", "price": 500, "category": "Gear", "stock": 45, "threshold": 10, "image": "", "sku": "FLASH-TAC-005" },
+  { "id": "SKU-006", "name": "Yoga Mat", "price": 600, "category": "Fitness", "stock": 8, "threshold": 5, "image": "", "sku": "YOGA-MAT-006" },
+  { "id": "SKU-007", "name": "Windbreaker Camo", "price": 2000, "category": "Apparel", "stock": 17, "threshold": 5, "image": "", "sku": "WIND-CAMO-007" },
+  { "id": "SKU-008", "name": "Med Kit Pouch", "price": 500, "category": "Gear", "stock": 2, "threshold": 5, "image": "", "sku": "MED-KIT-008" }
+]
