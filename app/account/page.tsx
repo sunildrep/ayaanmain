@@ -2,14 +2,29 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import PaymentModal from "@/components/payment/PaymentModal";
 
 export default function AccountPage() {
   const [data, setData] = useState<any>(null);
+  const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [paymentModal, setPaymentModal] = useState<{ open: boolean; payment: any }>({ open: false, payment: null });
   const router = useRouter();
 
   useEffect(() => {
-    fetch("/api/auth/me").then((r) => r.json()).then((d) => { if (!d.authenticated) router.push("/login"); else setData(d); setLoading(false); }).catch(() => setLoading(false));
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.authenticated) router.push("/login");
+        else setData(d);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+
+    fetch("/api/student/payments")
+      .then((r) => r.json())
+      .then((d) => setPayments(d))
+      .catch(() => setPayments([]));
   }, [router]);
 
   const logout = async () => {
@@ -22,6 +37,8 @@ export default function AccountPage() {
 
   const u = data.user;
   const a = data.admission;
+
+  const pendingPayments = payments.filter((p) => p.status === "pending" || p.status === "pending_verification");
 
   return (
     <div className="bg-slate-50 min-h-[70vh] py-8">
@@ -45,6 +62,34 @@ export default function AccountPage() {
               <span className="ml-auto px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-xs text-emerald-700">Active</span>
             </div>
           </div>
+
+          {pendingPayments.length > 0 && (
+            <div className="card mt-4 p-6">
+              <div className="font-semibold text-navy-900 mb-3">Pending Payments</div>
+              <div className="space-y-3">
+                {pendingPayments.map((p: any) => (
+                  <div key={p.id} className="border border-slate-200 rounded-xl p-4">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <div className="font-medium text-navy-900">{p.course} - {p.mode}</div>
+                        <div className="text-sm text-slate-500">Admission: {p.admissionId}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-sky-600 text-lg">₹{p.amount.toLocaleString()}</div>
+                        <div className="text-xs text-amber-600">{p.status === "pending_verification" ? "Awaiting Verification" : "Pending Payment"}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setPaymentModal({ open: true, payment: p })}
+                      className="mt-3 w-full btn-primary"
+                    >
+                      Pay Now via Razorpay
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="card mt-4 p-6">
             <div className="font-semibold text-navy-900">Admission Details</div>
@@ -73,6 +118,15 @@ export default function AccountPage() {
           </div>
         </div>
       </div>
+
+      <PaymentModal
+        isOpen={paymentModal.open}
+        onClose={() => setPaymentModal({ open: false, payment: null })}
+        pendingPayment={paymentModal.payment}
+        userName={u.name}
+        userEmail={u.email}
+        userPhone={u.phone}
+      />
     </div>
   );
 }
