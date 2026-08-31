@@ -3,41 +3,41 @@ import fs from "fs";
 import path from "path";
 
 const filePath = path.join(process.cwd(), "data", "knowledgeBase.json");
-
-// fallback: if file missing, seed from TS
 function read() {
   try {
     if (fs.existsSync(filePath)) return JSON.parse(fs.readFileSync(filePath, "utf-8"));
   } catch {}
-  // seed from knowledgeBase.ts via dynamic import fallback
   try {
     const seedPath = path.join(process.cwd(), "data", "rag.json");
     if (fs.existsSync(seedPath)) return JSON.parse(fs.readFileSync(seedPath, "utf-8"));
   } catch {}
   return null;
 }
-
-export async function GET() {
+function check(req: NextRequest) {
+  const r = req.cookies.get("ayaan_admin_role")?.value || "super_admin";
+  return r === "super_admin";
+}
+export async function GET(req: NextRequest) {
+  // public fallback allowed even without auth for RagBot, but admin view restricted
+  const isAdmin = req.cookies.get("ayaan_admin")?.value === "1";
+  if (isAdmin && !check(req)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const data = read();
   if (!data) {
-    // import TS file
     const { knowledgeBase } = await import("@/data/knowledgeBase");
     return NextResponse.json(knowledgeBase);
   }
   return NextResponse.json(data);
 }
-
 export async function POST(req: NextRequest) {
   if (req.cookies.get("ayaan_admin")?.value !== "1") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!check(req)) return NextResponse.json({ error: "Forbidden: super_admin only" }, { status: 403 });
   const body = await req.json();
-  // body can be single chunk or array
   let list: any[] = read() || [];
   if (!list) {
     const { knowledgeBase } = await import("@/data/knowledgeBase");
     list = [...knowledgeBase];
   }
   if (Array.isArray(body)) {
-    // replace all
     list = body;
   } else {
     const chunk = {
@@ -57,9 +57,9 @@ export async function POST(req: NextRequest) {
   fs.writeFileSync(filePath, JSON.stringify(list, null, 2));
   return NextResponse.json({ ok: true, count: list.length });
 }
-
 export async function DELETE(req: NextRequest) {
   if (req.cookies.get("ayaan_admin")?.value !== "1") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!check(req)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });

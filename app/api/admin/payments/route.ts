@@ -25,8 +25,15 @@ function getFee(course: string, mode: string) {
   return base;
 }
 
+function checkRole(req: NextRequest, allowed: string[]) {
+  const role = req.cookies.get("ayaan_admin_role")?.value || "super_admin";
+  if (!allowed.includes(role)) return false;
+  return true;
+}
+
 export async function POST(req: NextRequest) {
   if (req.cookies.get("ayaan_admin")?.value !== "1") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!checkRole(req, ["super_admin", "finance"])) return NextResponse.json({ error: "Forbidden: finance only" }, { status: 403 });
   const body = await req.json();
   const { name, phone, email, course, medium, mode, amount, paidAmount, dueDate, paymentMethod, transactionId, studentId, createStudent, password, fatherName, address, branch, courseType } = body;
   if (!name || !phone || !email || !course || !amount) return NextResponse.json({ error: "name, phone, email, course, amount required" }, { status: 400 });
@@ -101,6 +108,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   if (req.cookies.get("ayaan_admin")?.value !== "1") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!checkRole(req, ["super_admin", "finance"])) return NextResponse.json({ error: "Forbidden: finance only" }, { status: 403 });
   const admissions = read(admPath, []);
   const users = read(usersPath, []);
 

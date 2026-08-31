@@ -11,15 +11,21 @@ function writeAdm(list: any[]) { fs.writeFileSync(admPath, JSON.stringify(list, 
 function readUsers() { try { return JSON.parse(fs.readFileSync(usersPath, "utf-8")); } catch { return []; } }
 function writeUsers(list: any[]) { fs.writeFileSync(usersPath, JSON.stringify(list, null, 2)); }
 function hash(pw: string) { return crypto.createHash("sha256").update(pw).digest("hex"); }
+function check(req: NextRequest, allowed: string[]) {
+  const r = req.cookies.get("ayaan_admin_role")?.value || "super_admin";
+  return allowed.includes(r);
+}
 
 export async function GET(req: NextRequest) {
   if (req.cookies.get("ayaan_admin")?.value !== "1") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!check(req, ["super_admin", "admissions"])) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const list = readAdm();
   return NextResponse.json(list, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: NextRequest) {
   if (req.cookies.get("ayaan_admin")?.value !== "1") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!check(req, ["super_admin", "admissions"])) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const body = await req.json();
   const { action, id, password } = body;
   if (!action || !id) return NextResponse.json({ error: "action and id required" }, { status: 400 });

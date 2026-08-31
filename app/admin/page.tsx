@@ -2,27 +2,69 @@
 import { useEffect, useState } from "react";
 
 type Tab = "dashboard" | "rag" | "batches" | "banner" | "admissions" | "payments" | "students" | "finance" | "leads" | "alumni" | "store";
+type Role = "super_admin" | "finance" | "admissions";
+
+const roleTabs: Record<Role, Tab[]> = {
+  super_admin: ["dashboard", "store", "alumni", "leads", "payments", "students", "finance", "admissions", "rag", "batches", "banner"],
+  finance: ["dashboard", "payments", "finance"],
+  admissions: ["dashboard", "admissions", "leads", "students", "alumni"],
+};
+
+const allTabs: { id: Tab; label: string }[] = [
+  { id: "dashboard", label: "Dashboard" },
+  { id: "store", label: "Store Stock" },
+  { id: "alumni", label: "Alumni" },
+  { id: "leads", label: "Leads" },
+  { id: "payments", label: "Payments" },
+  { id: "students", label: "Students" },
+  { id: "finance", label: "AR / AP" },
+  { id: "admissions", label: "Admissions" },
+  { id: "rag", label: "RAG" },
+  { id: "batches", label: "Batches" },
+  { id: "banner", label: "Banner" },
+];
 
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [auth, setAuth] = useState<boolean | null>(null);
+  const [role, setRole] = useState<Role>("super_admin");
+  const [authUser, setAuthUser] = useState("");
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
   const [loginErr, setLoginErr] = useState("");
 
   useEffect(() => {
-    fetch("/api/admin/login").then((r) => r.json()).then((d) => setAuth(!!d.authenticated)).catch(() => setAuth(false));
+    fetch("/api/admin/login")
+      .then((r) => r.json())
+      .then((d) => {
+        setAuth(!!d.authenticated);
+        if (d.role) setRole(d.role as Role);
+        if (d.user) setAuthUser(d.user);
+        if (d.authenticated && d.role) {
+          const allowed = roleTabs[d.role as Role] || roleTabs.super_admin;
+          if (!allowed.includes(tab)) setTab(allowed[0]);
+        }
+      })
+      .catch(() => setAuth(false));
   }, []);
 
   const doLogin = async () => {
     setLoginErr("");
     const r = await fetch("/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: user, password: pass }) });
-    if (r.ok) setAuth(true);
-    else setLoginErr("Invalid username or password");
+    const data = await r.json().catch(() => ({}));
+    if (r.ok) {
+      setAuth(true);
+      const newRole = (data.role as Role) || "super_admin";
+      setRole(newRole);
+      setAuthUser(data.name || user);
+      const allowed = roleTabs[newRole] || roleTabs.super_admin;
+      setTab(allowed[0]);
+    } else setLoginErr("Invalid username or password");
   };
   const doLogout = async () => {
     await fetch("/api/admin/login", { method: "DELETE" });
     setAuth(false);
+    setRole("super_admin");
   };
 
   if (auth === null) return <div className="min-h-screen grid place-items-center text-slate-500">Loading…</div>;
@@ -33,18 +75,25 @@ export default function AdminPage() {
         <div className="card p-8 w-full max-w-md">
           <div className="w-12 h-12 rounded-2xl bg-navy-900 text-white grid place-items-center font-bold">A</div>
           <h1 className="mt-4 font-display font-bold text-xl text-navy-900">Ayaan Admin</h1>
-          <p className="text-sm text-slate-500">Sign in to manage RAG, batches & banner</p>
+          <p className="text-sm text-slate-500">Sign in — role-based access</p>
           <div className="mt-6 grid gap-3">
             <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="Username" className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
             <input value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Password" type="password" onKeyDown={(e) => e.key === "Enter" && doLogin()} className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
             {loginErr && <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl">{loginErr}</div>}
             <button onClick={doLogin} className="btn-primary justify-center">Sign In →</button>
-            <div className="text-xs text-slate-400 text-center">Default: <b className="text-slate-600">admin / Ayaan@2026</b> — set ADMIN_USER / ADMIN_PASS in env</div>
+            <div className="text-xs text-slate-400 text-center leading-relaxed">
+              <div>Super: <b className="text-slate-600">admin / Ayaan@2026</b> — all access</div>
+              <div>Finance: <b className="text-slate-600">finance / Finance@2026</b> — payments only</div>
+              <div>Admissions: <b className="text-slate-600">admissions / Admissions@2026</b> — admissions & leads</div>
+            </div>
           </div>
         </div>
       </div>
     );
   }
+
+  const allowed = roleTabs[role] || roleTabs.super_admin;
+  const visibleTabs = allTabs.filter((t) => allowed.includes(t.id));
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -54,8 +103,9 @@ export default function AdminPage() {
             <div className="w-9 h-9 rounded-xl bg-navy-900 text-white grid place-items-center font-bold">A</div>
             <div>
               <div className="font-display font-bold text-navy-900 leading-none">AYAAN ADMIN</div>
-              <div className="text-xs text-slate-500">Dashboard • Payments • Students • AR/AP</div>
+              <div className="text-xs text-slate-500 capitalize">{role.replace("_", " ")} • {authUser}</div>
             </div>
+            <span className={`ml-2 px-2.5 py-1 rounded-full text-xs font-semibold border capitalize ${role === "super_admin" ? "bg-navy-900 text-white border-navy-900" : role === "finance" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-sky-50 border-sky-200 text-sky-700"}`}>{role.replace("_", " ")}</span>
           </div>
           <div className="flex items-center gap-2">
             <a href="/" className="px-4 py-2 rounded-full border border-slate-200 text-sm hover:bg-slate-50">View Site →</a>
@@ -63,22 +113,15 @@ export default function AdminPage() {
           </div>
         </div>
         <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 flex gap-2 pb-3 flex-wrap">
-          {[
-            { id: "dashboard", label: "Dashboard" },
-            { id: "store", label: "Store Stock" },
-            { id: "alumni", label: "Alumni" },
-            { id: "leads", label: "Leads" },
-            { id: "payments", label: "Payments" },
-            { id: "students", label: "Students" },
-            { id: "finance", label: "AR / AP" },
-            { id: "admissions", label: "Admissions" },
-            { id: "rag", label: "RAG" },
-            { id: "batches", label: "Batches" },
-            { id: "banner", label: "Banner" },
-          ].map((t) => (
+          {visibleTabs.map((t) => (
             <button key={t.id} onClick={() => setTab(t.id as Tab)} className={`px-3 py-2 rounded-full text-xs sm:text-sm font-medium border transition ${tab === t.id ? "bg-navy-900 text-white border-navy-900" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{t.label}</button>
           ))}
         </div>
+        {role !== "super_admin" && (
+          <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 pb-3">
+            <div className="text-xs px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800">Limited access — {role} can only manage: {allowed.join(", ")}</div>
+          </div>
+        )}
       </header>
 
       <main className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-6">

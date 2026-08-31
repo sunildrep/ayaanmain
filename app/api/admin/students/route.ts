@@ -7,15 +7,22 @@ const usersPath = path.join(process.cwd(), "data", "users.json");
 function readUsers() { try { return JSON.parse(fs.readFileSync(usersPath, "utf-8")); } catch { return []; } }
 function writeUsers(list: any[]) { fs.writeFileSync(usersPath, JSON.stringify(list, null, 2)); }
 function hash(pw: string) { return crypto.createHash("sha256").update(pw).digest("hex"); }
+function check(req: NextRequest, allowed: string[]) {
+  const r = req.cookies.get("ayaan_admin_role")?.value || "super_admin";
+  return allowed.includes(r);
+}
 
 export async function GET(req: NextRequest) {
   if (req.cookies.get("ayaan_admin")?.value !== "1") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // finance needs read for payments dropdown, admissions needs full
+  if (!check(req, ["super_admin", "admissions", "finance"])) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const users = readUsers();
   return NextResponse.json(users, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: NextRequest) {
   if (req.cookies.get("ayaan_admin")?.value !== "1") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!check(req, ["super_admin", "admissions"])) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const body = await req.json();
   const { id, action, password, name, fatherName, email, phone, address, reference, branch, course, courseType, medium, mode, active } = body;
 

@@ -1,0 +1,5 @@
+[
+  { "username": "admin", "password": "Ayaan@2026", "role": "super_admin", "name": "Super Admin" },
+  { "username": "finance", "password": "Finance@2026", "role": "finance", "name": "Finance Admin" },
+  { "username": "admissions", "password": "Admissions@2026", "role": "admissions", "name": "Admissions Admin" }
+]
