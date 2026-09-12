@@ -12,12 +12,15 @@ export async function POST(req: NextRequest) {
   const auth = await requireAdminSession(req, ["super_admin"]);
   if (auth.error) return auth.error;
   const body = await req.json();
-  const { id, name, price, category, stock, threshold, sku, image } = body;
+  const { id, name, price, category, stock, threshold, sku, image, sizes } = body;
   if (!name || price === undefined) return NextResponse.json({ error: "name and price required" }, { status: 400 });
+  const sizeList = Array.isArray(sizes)
+    ? sizes.map((s: any) => String(s).trim().toUpperCase()).filter(Boolean)
+    : String(sizes || "").split(",").map((s: string) => s.trim().toUpperCase()).filter(Boolean);
   const item = await prisma.storeItem.upsert({
     where: { id: id || "" },
-    update: { name: String(name).trim(), price: Number(price), category: String(category || "General"), stock: Number(stock ?? 0), threshold: Number(threshold ?? 5), sku: String(sku || ""), image: String(image || "") },
-    create: { id: id || `SKU-${Date.now()}`, name: String(name).trim(), price: Number(price), category: String(category || "General"), stock: Number(stock ?? 0), threshold: Number(threshold ?? 5), sku: String(sku || ""), image: String(image || "") },
+    update: { name: String(name).trim(), price: Number(price), category: String(category || "General"), stock: Number(stock ?? 0), threshold: Number(threshold ?? 5), sku: String(sku || ""), image: String(image || ""), sizes: sizeList },
+    create: { id: id || `SKU-${Date.now()}`, name: String(name).trim(), price: Number(price), category: String(category || "General"), stock: Number(stock ?? 0), threshold: Number(threshold ?? 5), sku: String(sku || ""), image: String(image || ""), sizes: sizeList },
   });
   return NextResponse.json(item);
 }

@@ -22,8 +22,8 @@ async function main() {
   for (const a of admins) {
     await prisma.admin.upsert({
       where: { username: a.username },
-      update: { passwordHash: a.passwordHash, role: a.role, name: a.name },
-      create: { username: a.username, passwordHash: a.passwordHash, role: a.role, name: a.name },
+      update: { email: a.email, passwordHash: a.passwordHash, role: a.role, name: a.name },
+      create: { username: a.username, email: a.email, passwordHash: a.passwordHash, role: a.role, name: a.name },
     });
   }
   console.log(`   ✅ ${admins.length} admins migrated`);

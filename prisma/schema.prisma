@@ -13,7 +13,9 @@ datasource db {
 model Admin {
   id           String   @id @default(cuid())
   username     String   @unique
-  passwordHash String
+  email        String   @unique
+  supabaseId   String?  @unique
+  passwordHash String? // legacy - will be removed, use Supabase Auth only
   role         String   // super_admin, finance, admissions
   name         String
   createdAt    DateTime @default(now())
@@ -23,23 +25,30 @@ model Admin {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  name          String
-  fatherName    String?
-  email         String   @unique
-  phone         String   @unique
-  address       String?
-  reference     String?
-  branch        String?
-  course        String
-  courseType    String
-  medium        String
-  mode          String
-  passwordHash  String
-  admissionId   String?
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                  String    @id @default(cuid())
+  name                String
+  fatherName          String?
+  email               String    @unique
+  phone               String    @unique
+  address             String?
+  reference           String?
+  branch              String?
+  course              String
+  courseType          String
+  medium              String
+  mode                String
+  passwordHash        String? // legacy - Supabase Auth is primary
+  supabaseId          String?  @unique
+  admissionId         String?
+  studentId           String?  @unique // AYN-STU-YYYY-NNNNNN, only after approval
+  digitalIdNo         String?  @unique
+  digitalIdValidFrom  DateTime?
+  digitalIdValidUntil DateTime?
+  digitalIdStatus     String?  // active, expired, revoked
+  mustChangePassword  Boolean   @default(false)
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@map("users")
 }
@@ -58,12 +67,17 @@ model Admission {
   medium          String
   mode            String
   batchId         String?
-  paymentMethod   String   // cash, upi, bank
+  paymentMethod   String   // cash, upi, bank, razorpay
   transactionId   String?
   screenshot      String?  // base64 data URL
-  amount          Int
+  amount          Int      // base fee before discount
   feeAmount       Int?
-  status          String   @default("pending") // pending, approved, rejected
+  discount        Int      @default(0) // discount amount in Rs
+  discountPercent Int      @default(0) // optional percent
+  totalFee        Int?     // amount - discount
+  payingNow       Int?     // paying now amount
+  balanceDue      Int?     // totalFee - payingNow
+  status          String   @default("pending") // pending, clarification_required, discount_pending, approved, rejected
   paidAmount      Int?
   dueDate         DateTime?
   createdAt       DateTime @default(now())
@@ -71,6 +85,22 @@ model Admission {
   rejectedAt      DateTime?
   manual          Boolean  @default(false)
   studentId       String?
+  // Application → Student workflow
+  applicationId     String?  @unique // AYN-APP-YYYY-NNNNNN, set at submit, never changes
+  applicantStudentId String? @unique // AYN-STU-YYYY-NNNNNN, set only at approval
+  photo             String?  // passport photo URL
+  durationId        String?
+  durationName      String?  // snapshot e.g. "1 Year"
+  durationMonths    Int?     // snapshot e.g. 12
+  batchName         String?  // snapshot of batch name at approval
+  admissionStartDate DateTime? // confirmed start (defaults to batch start)
+  courseEndDate     DateTime? // start + duration, snapshot
+  addonFees         Int      @default(0) // snapshot sum of add-ons
+  finalFee          Int?     // locked final fee (base + addons - discount)
+  feeLocked         Boolean  @default(false)
+  discountStatus    String   @default("none") // none, requested, approved, rejected
+  clarificationNote String?
+  clarificationToken String? @unique // token for applicant correction page
 
   @@map("admissions")
 }
@@ -99,35 +129,189 @@ model Payment {
 }
 
 model Expense {
-  id          String   @id @default(cuid())
-  title       String
-  category    String
-  amount      Int
-  dueDate     DateTime
-  status      String   @default("pending") // pending, paid
-  vendor      String?
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  title         String   // expense name
+  category      String
+  amount        Int
+  paidBy        String?  // who paid (employee name)
+  paymentMethod String   @default("cash") // cash, UPI, bank
+  expenseDate   DateTime @default(now()) // actual expense date
+  dueDate       DateTime // for AP tracking
+  status        String   @default("pending") // pending, approved, rejected, paid
+  vendor        String?
+  notes         String?
+  requestedBy   String?  // username who created
+  approvedBy    String?  // super_admin who approved
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@map("expenses")
 }
 
 model Batch {
   id          String   @id @default(cuid())
+  name        String?  // e.g. "October 2026 Morning Batch"
   course      String
   medium      String
   mode        String
+  branch      String?  // branch this batch belongs to
+  slot        String?  // e.g. "Morning 6-9 AM" / "Evening 5-8 PM"
+  days        String?  // e.g. "Mon–Sat"
   startDate   DateTime
-  seats       Int
-  filled      Int      @default(0)
+  endDate     DateTime? // computed from duration
+  seats       Int      // capacity
+  filled      Int      @default(0) // current enrollment
   duration    String
+  durationMonths Int?  // numeric duration for end-date calc
   status      String   @default("open") // open, closed
+  isActive    Boolean  @default(true)
   note        String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@map("batches")
+}
+
+model Duration {
+  id        String   @id @default(cuid())
+  name      String   @unique // e.g. "3 Months", "1 Year"
+  months    Int      // e.g. 3, 6, 12
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("durations")
+}
+
+model Addon {
+  id        String   @id @default(cuid())
+  name      String
+  fee       Int
+  courses   String[] @default([]) // empty = all courses
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("addons")
+}
+
+model ApplicationAddon {
+  id          String   @id @default(cuid())
+  admissionId String
+  addonId     String?
+  name        String   // fee snapshot
+  fee         Int      // fee snapshot
+  createdAt   DateTime @default(now())
+
+  @@index([admissionId])
+  @@map("application_addons")
+}
+
+model Installment {
+  id             String   @id @default(cuid())
+  admissionId    String
+  studentId      String?
+  seq            Int      // 1,2,3...
+  label          String   // e.g. "Installment 1"
+  originalAmount Int
+  paidAmount     Int      @default(0) // derived from allocations, cached
+  dueDate        DateTime
+  status         String   @default("pending") // pending, partial, paid
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  allocations    PaymentAllocation[]
+  dueHistory     DueDateHistory[]
+
+  @@index([admissionId])
+  @@index([studentId])
+  @@map("installments")
+}
+
+model FeePayment {
+  id            String   @id @default(cuid())
+  admissionId   String
+  studentId     String?
+  amount        Int
+  method        String   // cash, upi, bank, razorpay
+  transactionId String?
+  screenshot    String?
+  status        String   @default("submitted") // submitted, pending_verification, acknowledged, rejected, failed
+  recordedBy    String?
+  note          String?
+  receiptNo     String?  @unique
+  razorpayOrderId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  allocations   PaymentAllocation[]
+  receipt       Receipt?
+
+  @@index([admissionId])
+  @@index([studentId])
+  @@index([status])
+  @@map("fee_payments")
+}
+
+model PaymentAllocation {
+  id            String      @id @default(cuid())
+  feePaymentId  String
+  feePayment    FeePayment  @relation(fields: [feePaymentId], references: [id], onDelete: Cascade)
+  installmentId String
+  installment   Installment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+  amount        Int
+
+  @@index([feePaymentId])
+  @@index([installmentId])
+  @@map("payment_allocations")
+}
+
+model Receipt {
+  id           String     @id @default(cuid())
+  receiptNo    String     @unique // AYN-RCP-YYYY-NNNNNN
+  feePaymentId String     @unique
+  feePayment   FeePayment @relation(fields: [feePaymentId], references: [id], onDelete: Cascade)
+  admissionId  String
+  studentId    String?
+  amount       Int
+  createdAt    DateTime   @default(now())
+
+  @@index([admissionId])
+  @@index([studentId])
+  @@map("receipts")
+}
+
+model DueDateHistory {
+  id            String      @id @default(cuid())
+  installmentId String
+  installment   Installment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+  prevDue       DateTime?
+  newDue        DateTime
+  updatedBy     String
+  reason        String?
+  createdAt     DateTime    @default(now())
+
+  @@index([installmentId])
+  @@map("due_date_history")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  entity    String   // admission, installment, payment, receipt, batch, allocation
+  entityId  String
+  actor     String
+  action    String
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
+
+model Counter {
+  key String @id // e.g. "app:2026", "stu:2026", "rcp:2026", "did:2026"
+  seq Int   @default(0)
+
+  @@map("counters")
 }
 
 model Alumni {
@@ -147,16 +331,21 @@ model Alumni {
 }
 
 model Lead {
-  id          String   @id @default(cuid())
-  name        String
-  phone       String
-  course      String?
-  medium      String?
-  mode        String?
-  batchId     String?
-  status      String   @default("new")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String    @id @default(cuid())
+  name         String
+  phone        String
+  course       String?
+  medium       String?
+  mode         String?
+  batchId      String?
+  status       String    @default("new")
+  notes        String?   // admin notes
+  freeText     String?   // free text box
+  employeeName String?   // assigned employee
+  lastActionAt DateTime? // last action time
+  dueDate      DateTime? // follow-up due date
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@map("leads")
 }
@@ -170,10 +359,92 @@ model StoreItem {
   threshold   Int      @default(5)
   sku         String?
   image       String?
+  sizes       String[] @default([])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@map("store_items")
+}
+
+model CartItem {
+  id          String   @id @default(cuid())
+  userId      String
+  storeItemId String
+  qty         Int      @default(1)
+  size        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, storeItemId, size])
+  @@index([userId])
+  @@map("cart_items")
+}
+
+model StoreOrder {
+  id               String          @id @default(cuid())
+  orderNo          String          @unique
+  userId           String
+  name             String
+  email            String
+  phone            String
+  subtotal         Int
+  status           String          @default("placed") // placed, payment_confirmed, processing, ready_for_handover, handed_over, completed, cancelled, payment_failed
+  paymentStatus    String          @default("pending") // pending, success, failed
+  paymentMethod    String          @default("razorpay")
+  razorpayOrderId  String?
+  razorpayPaymentId String?
+  handedOverAt     DateTime?
+  handedOverBy     String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  items            StoreOrderItem[]
+  events           OrderEvent[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("store_orders")
+}
+
+model StoreOrderItem {
+  id          String     @id @default(cuid())
+  orderId     String
+  order       StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  storeItemId String
+  name        String
+  price       Int
+  qty         Int
+  size        String?
+
+  @@index([orderId])
+  @@map("store_order_items")
+}
+
+model OrderEvent {
+  id        String     @id @default(cuid())
+  orderId   String
+  order     StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actor     String
+  action    String
+  note      String?
+  createdAt DateTime   @default(now())
+
+  @@index([orderId])
+  @@map("order_events")
+}
+
+model AdmissionPayment {
+  id            String    @id @default(cuid())
+  admissionId   String
+  method        String    // cash, upi, bank, razorpay
+  amount        Int
+  transactionId String?
+  screenshot    String?
+  recordedBy    String?   // student email or admin username
+  note          String?
+  createdAt     DateTime  @default(now())
+
+  @@index([admissionId])
+  @@map("admission_payments")
 }
 
 model Banner {
@@ -214,4 +485,75 @@ model Session {
   @@index([token])
   @@index([userId])
   @@map("sessions")
+}
+
+model FeeConfig {
+  id        String   @id @default(cuid())
+  course    String
+  mode      String   // Residential, Offline, Online
+  duration  String   @default("") // Duration name e.g. "3 Months"; "" = base fee for all durations
+  medium    String   @default("") // Medium name e.g. "Telugu"; "" = base fee for all mediums
+  branch    String   @default("") // Branch name e.g. "Warangal"; "" = base fee for all branches
+  amount    Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([course, mode, duration, medium, branch])
+  @@map("fee_configs")
+}
+
+model Medium {
+  id        String   @id @default(cuid())
+  name      String   @unique // e.g. "Telugu", "English", "Hindi"
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("mediums")
+}
+
+model Course {
+  id               String         @id @default(cuid())
+  slug             String         @unique
+  title            String
+  tag              String
+  desc             String
+  duration         String
+  fee              String
+  eligibility      String
+  ageLimit         String
+  notificationDate String
+  prerequisites    String[]
+  highlights       String[]
+  mediums          String[]
+  modes            String[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  syllabus         SyllabusItem[]
+
+  @@map("courses")
+}
+
+model SyllabusItem {
+  id       String   @id @default(cuid())
+  courseId String
+  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subject  String
+  topics   String[]
+  createdAt DateTime @default(now())
+
+  @@index([courseId])
+  @@map("syllabus_items")
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  address   String
+  phone     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("branches")
 }

@@ -1,27 +1,35 @@
 "use client";
 import { useEffect, useState } from "react";
+import AuthForgotPassword from "@/components/AuthForgotPassword";
+import { DonutChart, GroupedBarChart, CHART_COLORS } from "@/components/Charts";
+import ReceiptView from "@/components/ReceiptView";
 
-type Tab = "dashboard" | "rag" | "batches" | "banner" | "admissions" | "payments" | "students" | "finance" | "leads" | "alumni" | "store";
+type Tab = "dashboard" | "rag" | "batches" | "banner" | "admissions" | "payments" | "students" | "finance" | "leads" | "alumni" | "store" | "fees" | "expenses" | "orders" | "dues" | "masters";
 type Role = "super_admin" | "finance" | "admissions";
 
 const roleTabs: Record<Role, Tab[]> = {
-  super_admin: ["dashboard", "store", "alumni", "leads", "payments", "students", "finance", "admissions", "rag", "batches", "banner"],
-  finance: ["dashboard", "payments", "finance"],
+  super_admin: ["dashboard", "store", "orders", "alumni", "leads", "payments", "students", "finance", "dues", "expenses", "admissions", "rag", "batches", "masters", "banner", "fees"],
+  finance: ["dashboard", "payments", "finance", "dues", "expenses", "orders", "fees"],
   admissions: ["dashboard", "admissions", "leads", "students", "alumni"],
 };
 
 const allTabs: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "store", label: "Store Stock" },
+  { id: "orders", label: "Orders" },
   { id: "alumni", label: "Alumni" },
   { id: "leads", label: "Leads" },
   { id: "payments", label: "Payments" },
   { id: "students", label: "Students" },
   { id: "finance", label: "AR / AP" },
+  { id: "dues", label: "Dues & Receipts" },
+  { id: "expenses", label: "Expense Tracker" },
   { id: "admissions", label: "Admissions" },
   { id: "rag", label: "RAG" },
   { id: "batches", label: "Batches" },
+  { id: "masters", label: "Masters" },
   { id: "banner", label: "Banner" },
+  { id: "fees", label: "Fee Config" },
 ];
 
 export default function AdminPage() {
@@ -32,6 +40,13 @@ export default function AdminPage() {
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
   const [loginErr, setLoginErr] = useState("");
+  const [showForgot, setShowForgot] = useState(false);
+  const [otpMode, setOtpMode] = useState(false);
+  const [otpEmail, setOtpEmail] = useState("sunil@drep.in");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [newOrders, setNewOrders] = useState(0);
 
   useEffect(() => {
     fetch("/api/admin/login")
@@ -47,6 +62,20 @@ export default function AdminPage() {
       })
       .catch(() => setAuth(false));
   }, []);
+
+  useEffect(() => {
+    if (!auth) return;
+    if (role !== "super_admin" && role !== "finance") return;
+    const poll = () => {
+      fetch("/api/admin/orders", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => setNewOrders(Number(d.newCount || 0)))
+        .catch(() => {});
+    };
+    poll();
+    const id = setInterval(poll, 30000);
+    return () => clearInterval(id);
+  }, [auth, role, tab]);
 
   const doLogin = async () => {
     setLoginErr("");
@@ -67,28 +96,82 @@ export default function AdminPage() {
     setRole("super_admin");
   };
 
+  const sendAdminOtp = async () => {
+    setLoginErr("");
+    if (!otpEmail.trim() || !otpEmail.includes("@")) return setLoginErr("Valid email required");
+    setOtpLoading(true);
+    const r = await fetch("/api/admin/send-otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: otpEmail.trim().toLowerCase() }) });
+    const d = await r.json().catch(() => ({}));
+    setOtpLoading(false);
+    if (r.ok) { setOtpSent(true); setLoginErr(""); alert(d.message || "OTP sent to sunil@drep.in"); }
+    else setLoginErr(d.error || "Failed to send OTP");
+  };
+  const verifyAdminOtp = async () => {
+    setLoginErr("");
+    if (!otp.trim()) return setLoginErr("OTP required");
+    setOtpLoading(true);
+    const r = await fetch("/api/admin/verify-otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: otpEmail.trim().toLowerCase(), token: otp.trim() }) });
+    const d = await r.json().catch(() => ({}));
+    setOtpLoading(false);
+    if (r.ok) {
+      setAuth(true);
+      const newRole = (d.role as Role) || "super_admin";
+      setRole(newRole);
+      setAuthUser(d.name || otpEmail);
+      const allowed = roleTabs[newRole] || roleTabs.super_admin;
+      setTab(allowed[0]);
+    } else setLoginErr(d.error || "Invalid OTP");
+  };
+
   if (auth === null) return <div className="min-h-screen grid place-items-center text-slate-500">Loading…</div>;
 
   if (!auth) {
     return (
-      <div className="min-h-screen bg-slate-50 grid place-items-center p-4">
-        <div className="card p-8 w-full max-w-md">
-          <div className="w-12 h-12 rounded-2xl bg-navy-900 text-white grid place-items-center font-bold">A</div>
-          <h1 className="mt-4 font-display font-bold text-xl text-navy-900">Ayaan Admin</h1>
-          <p className="text-sm text-slate-500">Sign in — role-based access</p>
-          <div className="mt-6 grid gap-3">
-            <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="Username" className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
-            <input value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Password" type="password" onKeyDown={(e) => e.key === "Enter" && doLogin()} className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
-            {loginErr && <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl">{loginErr}</div>}
-            <button onClick={doLogin} className="btn-primary justify-center">Sign In →</button>
-            <div className="text-xs text-slate-400 text-center leading-relaxed">
-              <div>Super: <b className="text-slate-600">admin / Ayaan@2026</b> — all access</div>
-              <div>Finance: <b className="text-slate-600">finance / Finance@2026</b> — payments only</div>
-              <div>Admissions: <b className="text-slate-600">admissions / Admissions@2026</b> — admissions & leads</div>
+      <>
+        <div className="min-h-screen bg-slate-50 grid place-items-center p-4">
+          <div className="card p-8 w-full max-w-md">
+            <div className="w-12 h-12 rounded-2xl bg-navy-900 text-white grid place-items-center font-bold">A</div>
+            <h1 className="mt-4 font-display font-bold text-xl text-navy-900">Ayaan Admin</h1>
+            <p className="text-sm text-slate-500">Sign in — role-based access</p>
+            <div className="mt-6 grid gap-3">
+              {!otpMode ? (
+                <>
+                  <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="Email" className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                  <input value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Password" type="password" onKeyDown={(e) => e.key === "Enter" && doLogin()} className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                  {loginErr && <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl">{loginErr}</div>}
+                  <button onClick={doLogin} className="btn-primary justify-center">Sign In →</button>
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowForgot(true)} className="flex-1 text-xs text-slate-600 hover:text-sky-700 hover:underline text-center py-2">Forgot password?</button>
+                    <span className="text-slate-300 py-2">•</span>
+                    <button onClick={() => { setOtpMode(true); setLoginErr(""); setOtpSent(false); }} className="flex-1 text-xs font-semibold text-navy-900 hover:text-sky-700 hover:underline text-center py-2">Login with OTP → Secured</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="p-3 rounded-xl bg-sky-50 border border-sky-200">
+                    <div className="text-xs font-bold text-sky-800">Secured Admin OTP Layer</div>
+                    <div className="text-xs text-sky-700 mt-1">OTP will be sent to <b>sunil@drep.in</b> only (as per secured layer). Valid 1 hour. Check inbox/spam.</div>
+                  </div>
+                  <input value={otpEmail} onChange={(e) => setOtpEmail(e.target.value)} placeholder="Email (sunil@drep.in)" className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                  {!otpSent ? (
+                    <button onClick={sendAdminOtp} disabled={otpLoading} className="btn-primary justify-center disabled:opacity-50">{otpLoading ? "Sending…" : "Send OTP to sunil@drep.in →"}</button>
+                  ) : (
+                    <>
+                      <input value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="Enter 6-digit OTP from email" inputMode="numeric" maxLength={8} className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm tracking-widest focus:outline-none focus:ring-2 focus:ring-sky-500" />
+                      {loginErr && <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl">{loginErr}</div>}
+                      <button onClick={verifyAdminOtp} disabled={otpLoading} className="btn-primary justify-center disabled:opacity-50">{otpLoading ? "Verifying…" : "Verify OTP & Login →"}</button>
+                      <button onClick={sendAdminOtp} disabled={otpLoading} className="text-xs text-sky-700 hover:underline text-center">Resend OTP</button>
+                    </>
+                  )}
+                  {loginErr && !otpSent && <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl">{loginErr}</div>}
+                  <button onClick={() => { setOtpMode(false); setOtpSent(false); setLoginErr(""); }} className="text-xs text-slate-600 hover:text-slate-800 hover:underline text-center">← Back to password login</button>
+                </>
+              )}
             </div>
           </div>
         </div>
-      </div>
+        {showForgot && <AuthForgotPassword onClose={() => setShowForgot(false)} defaultEmail={user} />}
+      </>
     );
   }
 
@@ -114,7 +197,12 @@ export default function AdminPage() {
         </div>
         <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 flex gap-2 pb-3 flex-wrap">
           {visibleTabs.map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id as Tab)} className={`px-3 py-2 rounded-full text-xs sm:text-sm font-medium border transition ${tab === t.id ? "bg-navy-900 text-white border-navy-900" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{t.label}</button>
+            <button key={t.id} onClick={() => setTab(t.id as Tab)} className={`px-3 py-2 rounded-full text-xs sm:text-sm font-medium border transition relative ${tab === t.id ? "bg-navy-900 text-white border-navy-900" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+              {t.label}
+              {t.id === "orders" && newOrders > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-600 text-white text-[11px] font-bold grid place-items-center border-2 border-white">{newOrders}</span>
+              )}
+            </button>
           ))}
         </div>
         {role !== "super_admin" && (
@@ -125,7 +213,7 @@ export default function AdminPage() {
       </header>
 
       <main className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {tab === "dashboard" && <DashboardTab />}
+        {tab === "dashboard" && <DashboardTab onOrders={() => setTab("orders")} />}
         {tab === "store" && <StoreStockTab />}
         {tab === "alumni" && <AlumniTab />}
         {tab === "leads" && <LeadsTab />}
@@ -136,6 +224,11 @@ export default function AdminPage() {
         {tab === "rag" && <RagTab />}
         {tab === "batches" && <BatchesTab />}
         {tab === "banner" && <BannerTab />}
+        {tab === "fees" && <FeeConfigTab />}
+        {tab === "expenses" && <ExpenseTrackerTab />}
+        {tab === "orders" && <OrdersTab />}
+        {tab === "dues" && <DuesTab />}
+        {tab === "masters" && <MastersTab />}
       </main>
     </div>
   );
@@ -216,9 +309,11 @@ function RagTab() {
   );
 }
 
+const EMPTY_BATCH = { id: "", name: "", course: "SI", medium: "Telugu", mode: "Residential", branch: "Warangal", slot: "", days: "", startDate: "2026-10-01", endDate: "", seats: 40, filled: 0, duration: "3 Months", durationMonths: 3, status: "open", isActive: true, note: "" };
+
 function BatchesTab() {
   const [list, setList] = useState<any[]>([]);
-  const [form, setForm] = useState({ id: "", course: "SI", medium: "Telugu", mode: "Residential", startDate: "2026-09-01", seats: 60, filled: 0, duration: "3 Months", status: "open", note: "" });
+  const [form, setForm] = useState({ ...EMPTY_BATCH });
   const [editing, setEditing] = useState<string | null>(null);
 
   const load = () => fetch("/api/admin/batches").then((r) => r.json()).then((d) => Array.isArray(d) && setList(d)).catch(() => {});
@@ -226,29 +321,48 @@ function BatchesTab() {
 
   const save = async () => {
     const r = await fetch("/api/admin/batches", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-    if (r.ok) { setForm({ id: "", course: "SI", medium: "Telugu", mode: "Residential", startDate: "2026-09-01", seats: 60, filled: 0, duration: "3 Months", status: "open", note: "" }); setEditing(null); load(); }
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) { setForm({ ...EMPTY_BATCH }); setEditing(null); load(); }
+    else alert(d.error || "Failed");
   };
   const del = async (id: string) => {
     if (!confirm(`Delete batch ${id}?`)) return;
-    await fetch(`/api/admin/batches?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-    load();
+    const r = await fetch(`/api/admin/batches?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) load();
+    else alert(d.error || "Failed");
   };
+  const toForm = (b: any) => ({
+    id: b.id, name: b.name || "", course: b.course, medium: b.medium, mode: b.mode, branch: b.branch || "Warangal",
+    slot: b.slot || "", days: b.days || "",
+    startDate: b.startDate ? new Date(b.startDate).toISOString().slice(0, 10) : "",
+    endDate: b.endDate ? new Date(b.endDate).toISOString().slice(0, 10) : "",
+    seats: b.seats, filled: b.filled, duration: b.duration, durationMonths: b.durationMonths || 3,
+    status: b.status, isActive: b.isActive !== false, note: b.note || "",
+  });
 
   return (
     <div className="grid lg:grid-cols-12 gap-6">
       <div className="lg:col-span-7 card p-6">
-        <h2 className="font-semibold text-navy-900">Next Batches • {list.length}</h2>
-        <div className="mt-4 grid gap-3">
+        <h2 className="font-semibold text-navy-900">Batches • {list.length} <span className="font-normal text-slate-500">— academic groups students join</span></h2>
+        <div className="mt-4 grid gap-3 max-h-[75vh] overflow-auto pr-1">
           {list.map((b) => (
-            <div key={b.id} className="p-4 rounded-2xl border border-slate-200 bg-white flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold text-navy-900">{b.course} • {b.medium} • {b.mode} <span className={`ml-2 text-xs px-2 py-1 rounded-full border ${b.status === "open" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-slate-100 border-slate-200 text-slate-600"}`}>{b.status}</span></div>
-                <div className="text-xs text-slate-600 mt-1">{new Date(b.startDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })} • {b.duration} • {b.seats - b.filled}/{b.seats} seats left</div>
-                <div className="text-xs text-slate-500">{b.note}</div>
-              </div>
-              <div className="flex gap-1 shrink-0">
-                <button onClick={() => { setEditing(b.id); setForm(b); }} className="px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs">Edit</button>
-                <button onClick={() => del(b.id)} className="px-3 py-1.5 rounded-full bg-red-50 border border-red-200 text-xs text-red-700">Delete</button>
+            <div key={b.id} className="p-4 rounded-2xl border border-slate-200 bg-white">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-navy-900">{b.name || `${b.course} Batch`} <span className={`ml-2 text-xs px-2 py-1 rounded-full border ${b.isActive !== false && b.status === "open" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-slate-100 border-slate-200 text-slate-600"}`}>{b.isActive === false ? "inactive" : b.status}</span></div>
+                  <div className="text-xs text-slate-600 mt-1">{b.course} • {b.medium} • {b.mode}{b.branch ? ` • ${b.branch}` : ""}{b.slot ? ` • ${b.slot}` : ""}{b.days ? ` • ${b.days}` : ""}</div>
+                  <div className="text-xs text-slate-600 mt-1">
+                    {new Date(b.startDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                    {b.endDate ? ` → ${new Date(b.endDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : ""} • {b.duration}
+                  </div>
+                  <div className="text-xs mt-1 font-medium text-navy-900">Capacity {b.seats} • Enrolled {b.filled} • <span className={b.seats - b.filled > 0 ? "text-emerald-700" : "text-red-600"}>{Math.max(0, b.seats - b.filled)} seats left</span></div>
+                  {b.note && <div className="text-xs text-slate-500 mt-1">{b.note}</div>}
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <button onClick={() => { setEditing(b.id); setForm(toForm(b)); }} className="px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs">Edit</button>
+                  <button onClick={() => del(b.id)} className="px-3 py-1.5 rounded-full bg-red-50 border border-red-200 text-xs text-red-700">Delete</button>
+                </div>
               </div>
             </div>
           ))}
@@ -258,27 +372,39 @@ function BatchesTab() {
 
       <div className="lg:col-span-5 card p-6 h-fit sticky top-[88px]">
         <h3 className="font-semibold text-navy-900">{editing ? `Edit: ${editing}` : "Add Batch"}</h3>
+        <p className="text-xs text-slate-500">Batch = Course + Duration + Branch + Slot + Dates + Capacity. End date auto-fills from duration.</p>
         <div className="mt-4 grid gap-3">
-          <input value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="id (auto if empty)" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Batch name * (e.g., October 2026 Morning Batch)" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
           <div className="grid grid-cols-3 gap-2">
             <select value={form.course} onChange={(e) => setForm({ ...form, course: e.target.value })} className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm"><option>SI</option><option>Constable</option><option>Groups</option><option>SSC GD</option><option>Defence</option><option>Army</option><option>UPSC</option></select>
             <select value={form.medium} onChange={(e) => setForm({ ...form, medium: e.target.value })} className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm"><option>Telugu</option><option>English</option></select>
             <select value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })} className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm"><option>Residential</option><option>Offline</option><option>Online</option></select>
           </div>
+          <div className="grid grid-cols-3 gap-2">
+            <select value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm"><option>Warangal</option><option>Hyderabad</option><option>Hanamkonda</option><option>Bollikunta (Residential)</option></select>
+            <input value={form.slot} onChange={(e) => setForm({ ...form, slot: e.target.value })} placeholder="Slot (e.g., Morning 6-9 AM)" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+            <input value={form.days} onChange={(e) => setForm({ ...form, days: e.target.value })} placeholder="Days (e.g., Mon–Sat)" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+          </div>
           <div className="grid grid-cols-2 gap-3">
-            <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
-            <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm"><option value="open">open</option><option value="closed">closed</option></select>
+            <div><label className="text-xs text-slate-500">Start Date *</label><input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" /></div>
+            <div><label className="text-xs text-slate-500">End Date (auto)</label><input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" /></div>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <input type="number" value={form.seats} onChange={(e) => setForm({ ...form, seats: Number(e.target.value) })} placeholder="Seats" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
-            <input type="number" value={form.filled} onChange={(e) => setForm({ ...form, filled: Number(e.target.value) })} placeholder="Filled" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
-            <input value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="Duration" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+            <div><label className="text-xs text-slate-500">Capacity *</label><input type="number" min={1} value={form.seats} onChange={(e) => setForm({ ...form, seats: Number(e.target.value) })} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" /></div>
+            <div><label className="text-xs text-slate-500">Enrolled</label><input type="number" min={0} value={form.filled} onChange={(e) => setForm({ ...form, filled: Number(e.target.value) })} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" /></div>
+            <div><label className="text-xs text-slate-500">Duration (months)</label><input type="number" min={1} value={form.durationMonths} onChange={(e) => setForm({ ...form, durationMonths: Number(e.target.value), duration: `${e.target.value} Months` })} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" /></div>
           </div>
-          <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Note (e.g., Includes hostel + food)" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+          <div className="grid grid-cols-3 gap-2">
+            <input value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="Duration label" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+            <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm"><option value="open">open</option><option value="closed">closed</option></select>
+            <label className="flex items-center gap-2 text-sm px-3"><input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} /> Active</label>
+          </div>
+          <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Note" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
           <div className="flex gap-2">
             <button onClick={save} className="flex-1 btn-primary justify-center">{editing ? "Update" : "Add"} Batch</button>
-            <button onClick={() => { setEditing(null); setForm({ id: "", course: "SI", medium: "Telugu", mode: "Residential", startDate: "2026-09-01", seats: 60, filled: 0, duration: "3 Months", status: "open", note: "" }); }} className="px-4 py-2.5 rounded-full border border-slate-200 text-sm">Clear</button>
+            <button onClick={() => { setEditing(null); setForm({ ...EMPTY_BATCH }); }} className="px-4 py-2.5 rounded-full border border-slate-200 text-sm">Clear</button>
           </div>
+          <div className="text-xs text-slate-400">Capacity can't drop below enrollment. Deleting a batch with approved students is blocked.</div>
         </div>
       </div>
     </div>
@@ -287,26 +413,51 @@ function BatchesTab() {
 
 function AdmissionsTab() {
   const [list, setList] = useState<any[]>([]);
-  const [filter, setFilter] = useState<"all" | "pending" | "approved" | "rejected">("pending");
-  const [pw, setPw] = useState<Record<string, string>>({});
+  const [filter, setFilter] = useState<"all" | "pending" | "clarification_required" | "discount_pending" | "approved" | "rejected">("pending");
+  const [splits, setSplits] = useState<Record<string, any[]>>({});
+  const [openPay, setOpenPay] = useState<Record<string, boolean>>({});
+  const [clarNote, setClarNote] = useState<Record<string, string>>({});
+  const [discAmt, setDiscAmt] = useState<Record<string, string>>({});
+  const [startDate, setStartDate] = useState<Record<string, string>>({});
+  const [role, setRole] = useState("super_admin");
   const load = () => fetch("/api/admin/admissions").then((r) => r.json()).then((d) => Array.isArray(d) && setList(d)).catch(() => {});
-  useEffect(() => { load(); }, []);
-  const act = async (id: string, action: string) => {
-    const password = pw[id];
-    if (action === "approve" && (!password || password.length < 6)) return alert("Enter password (min 6) to create user account");
-    const r = await fetch("/api/admin/admissions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action, password }) });
-    const data = await r.json();
-    if (r.ok) { alert(action === "approve" ? `Approved! User ${data.user.email} created` : `${action} done`); load(); setPw({}); }
-    else alert(data.error || "Failed");
+  useEffect(() => {
+    load();
+    fetch("/api/admin/login").then((r) => r.json()).then((d) => d.role && setRole(d.role)).catch(() => {});
+  }, []);
+  const isSuper = role === "super_admin";
+  const togglePay = async (id: string) => {
+    const next = !openPay[id];
+    setOpenPay({ ...openPay, [id]: next });
+    if (next && !splits[id]) {
+      const r = await fetch(`/api/admin/admission-payments?admissionId=${encodeURIComponent(id)}`, { cache: "no-store" });
+      const d = await r.json().catch(() => []);
+      if (Array.isArray(d)) setSplits({ ...splits, [id]: d });
+    }
+  };
+  const act = async (id: string, action: string, extra: any = {}) => {
+    const r = await fetch("/api/admin/admissions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action, ...extra }) });
+    const data = await r.json().catch(() => ({}));
+    if (r.ok) {
+      if (action === "approve") alert(`Approved! Student ${data.studentId} created — login ${data.user.email} / Ayaan@1234 (must change on first login)`);
+      else alert(data.locked === true || data.locked === false ? `${action} done` : `${action} done`);
+      load();
+    } else alert(data.error || "Failed");
   };
   const filtered = list.filter((a) => filter === "all" || a.status === filter);
+  const statusPill = (s: string) =>
+    s === "approved" ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+    : s === "rejected" ? "bg-red-50 border-red-200 text-red-700"
+    : s === "clarification_required" ? "bg-violet-50 border-violet-200 text-violet-700"
+    : s === "discount_pending" ? "bg-sky-50 border-sky-200 text-sky-700"
+    : "bg-amber-50 border-amber-200 text-amber-700";
   return (
     <div className="card p-6">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-semibold text-navy-900">Admissions • {list.length}</h2>
-        <div className="flex gap-1">
-          {(["all", "pending", "approved", "rejected"] as const).map((f) => (
-            <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 rounded-full text-xs border capitalize ${filter === f ? "bg-navy-900 text-white border-navy-900" : "bg-white border-slate-200"}`}>{f} ({f === "all" ? list.length : list.filter((x) => x.status === f).length})</button>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h2 className="font-semibold text-navy-900">Applications & Admissions • {list.length}</h2>
+        <div className="flex gap-1 flex-wrap">
+          {(["all", "pending", "clarification_required", "discount_pending", "approved", "rejected"] as const).map((f) => (
+            <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 rounded-full text-xs border ${filter === f ? "bg-navy-900 text-white border-navy-900" : "bg-white border-slate-200"}`}>{f === "all" ? `All (${list.length})` : `${f.replace(/_/g, " ")} (${list.filter((x) => x.status === f).length})`}</button>
           ))}
         </div>
       </div>
@@ -318,21 +469,77 @@ function AdmissionsTab() {
                 <div className="text-sm font-semibold text-navy-900">{a.name} {a.fatherName ? <span className="font-normal text-slate-600">S/o {a.fatherName}</span> : ""} • {a.phone} <span className="text-xs font-normal text-slate-500">• {a.email}</span></div>
                 <div className="text-xs text-slate-600 mt-1">{a.course} {a.courseType ? `• ${a.courseType}` : ""} • {a.medium} • {a.mode} • {a.branch || "—"} {a.batchId ? `• ${a.batchId}` : ""}</div>
                 {a.address && <div className="text-xs text-slate-500 mt-1">📍 {a.address} {a.reference ? `• Ref: ${a.reference}` : ""}</div>}
-                <div className="text-xs mt-1 flex gap-2 items-center flex-wrap"><span className="capitalize px-2 py-1 rounded-full bg-white border text-xs">{a.paymentMethod}</span>{a.amount && <span className="px-2 py-1 rounded-full bg-white border text-xs">₹{a.amount.toLocaleString("en-IN")}</span>}{a.transactionId && <span className="text-slate-600">Txn: {a.transactionId}</span>}<span className={`px-2 py-1 rounded-full text-xs border ${a.status === "pending" ? "bg-amber-50 border-amber-200 text-amber-700" : a.status === "approved" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-700"}`}>{a.status}</span></div>
-                <div className="text-xs text-slate-400 mt-1">{new Date(a.createdAt).toLocaleString("en-IN")} • {a.id}</div>
+                <div className="text-xs mt-1 flex gap-2 items-center flex-wrap">
+                  {a.applicationId && <span className="px-2 py-1 rounded-full bg-navy-900 text-white text-xs font-semibold">{a.applicationId}</span>}
+                  {a.applicantStudentId && <span className="px-2 py-1 rounded-full bg-emerald-600 text-white text-xs font-semibold">{a.applicantStudentId}</span>}
+                  <span className="capitalize px-2 py-1 rounded-full bg-white border text-xs">{a.paymentMethod}</span>
+                  {a.amount && <span className="px-2 py-1 rounded-full bg-white border text-xs">₹{a.amount.toLocaleString("en-IN")}</span>}
+                  {a.totalFee !== undefined && a.totalFee !== null && <span className="px-2 py-1 rounded-full bg-sky-50 border border-sky-200 text-sky-700 text-xs">Due ₹{Number(a.totalFee).toLocaleString("en-IN")} • Paid ₹{Number(a.payingNow || 0).toLocaleString("en-IN")} • Bal ₹{Number(a.balanceDue || 0).toLocaleString("en-IN")}</span>}
+                  {a.discountStatus && a.discountStatus !== "none" && <span className="px-2 py-1 rounded-full bg-violet-50 border border-violet-200 text-violet-700 text-xs">Discount {a.discountStatus}{a.discount ? `: ₹${Number(a.discount).toLocaleString("en-IN")}` : ""}{a.feeLocked ? " • locked" : ""}</span>}
+                  {a.transactionId && <span className="text-slate-600">Txn: {a.transactionId}</span>}
+                  <span className={`px-2 py-1 rounded-full text-xs border ${statusPill(a.status)}`}>{a.status.replace(/_/g, " ")}</span>
+                </div>
+                <div className="text-xs text-slate-500 mt-1">
+                  {a.durationName ? `${a.durationName} • ` : ""}{a.batchName || ""}{a.admissionStartDate ? ` • Start ${new Date(a.admissionStartDate).toLocaleDateString("en-IN")}` : ""}{a.courseEndDate ? ` → End ${new Date(a.courseEndDate).toLocaleDateString("en-IN")}` : ""}
+                </div>
+                {a.clarificationNote && <div className="text-xs mt-1 px-2 py-1 rounded-lg bg-violet-50 border border-violet-200 text-violet-800">Clarification: {a.clarificationNote}</div>}
+                <div className="text-xs text-slate-400 mt-1">{new Date(a.createdAt).toLocaleString("en-IN")} • {a.id} • <button onClick={() => togglePay(a.id)} className="text-sky-700 hover:underline">{openPay[a.id] ? "Hide payment splits ▲" : "Payment splits ▼"}</button></div>
+                {openPay[a.id] && (
+                  <div className="mt-2 grid gap-1.5">
+                    {(splits[a.id] || []).map((s: any) => (
+                      <div key={s.id} className="text-xs p-2 rounded-lg bg-white border border-slate-200 flex flex-wrap gap-x-3 gap-y-1">
+                        <b className="capitalize">{s.method}</b>
+                        <span className="font-semibold">₹{Number(s.amount).toLocaleString("en-IN")}</span>
+                        {s.transactionId && <span className="text-slate-500">Txn: {s.transactionId}</span>}
+                        <span className="text-slate-400">{new Date(s.createdAt).toLocaleString("en-IN")}{s.recordedBy ? ` • by ${s.recordedBy}` : ""}</span>
+                      </div>
+                    ))}
+                    {(splits[a.id] || []).length === 0 && <div className="text-xs text-slate-400">No split records (legacy admission).</div>}
+                  </div>
+                )}
               </div>
               <div className="shrink-0 text-right">
                 {a.screenshot && <a href={a.screenshot} target="_blank" className="text-xs text-sky-700 hover:underline"><img src={a.screenshot} alt="proof" className="w-20 h-14 object-cover rounded-lg border border-slate-200" /><div>View Proof</div></a>}
               </div>
             </div>
-            {a.status === "pending" && (
-              <div className="mt-3 flex gap-2 items-center">
-                <input value={pw[a.id] || ""} onChange={(e) => setPw({ ...pw, [a.id]: e.target.value })} placeholder="Set password for user (min 6)" className="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-sm" />
-                <button onClick={() => act(a.id, "approve")} className="px-4 py-2 rounded-full bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700">Approve & Create User</button>
-                <button onClick={() => act(a.id, "reject")} className="px-3 py-2 rounded-full bg-white border border-slate-200 text-xs hover:bg-slate-50">Reject</button>
+            {(a.status === "pending" || a.status === "clarification_required") && (
+              <div className="mt-3 grid gap-2">
+                <div className="flex gap-2 items-center flex-wrap">
+                  <input value={clarNote[a.id] || ""} onChange={(e) => setClarNote({ ...clarNote, [a.id]: e.target.value })} placeholder="Clarification note for applicant…" className="flex-1 min-w-[200px] px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+                  <button onClick={() => { if (!clarNote[a.id]?.trim()) return alert("Enter clarification note"); act(a.id, "request_clarification", { note: clarNote[a.id] }); }} className="px-3 py-2 rounded-full bg-violet-600 text-white text-xs font-medium hover:bg-violet-700">Ask Clarification</button>
+                </div>
+                <div className="flex gap-2 items-center flex-wrap">
+                  <input type="number" min={0} value={discAmt[a.id] || ""} onChange={(e) => setDiscAmt({ ...discAmt, [a.id]: e.target.value })} placeholder="Discount ₹" className="w-32 px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+                  <button onClick={() => { if (!discAmt[a.id]) return alert("Enter discount amount"); act(a.id, "apply_discount", { discount: Number(discAmt[a.id]) }); }} className="px-3 py-2 rounded-full bg-white border border-slate-200 text-xs hover:bg-slate-50">{isSuper ? "Apply Discount & Lock" : "Request Discount"}</button>
+                  {a.discountStatus === "requested" && isSuper && (
+                    <>
+                      <button onClick={() => act(a.id, "approve_discount")} className="px-3 py-2 rounded-full bg-emerald-600 text-white text-xs font-semibold">Approve Discount (₹{Number(a.discount || 0).toLocaleString("en-IN")})</button>
+                      <button onClick={() => act(a.id, "reject_discount")} className="px-3 py-2 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs">Reject</button>
+                    </>
+                  )}
+                </div>
+                {a.status === "pending" && (
+                  <div className="flex gap-2 items-center flex-wrap">
+                    <input type="date" value={startDate[a.id] || ""} onChange={(e) => setStartDate({ ...startDate, [a.id]: e.target.value })} className="px-3 py-2 rounded-xl border border-slate-200 text-sm" title="Override admission start date (default: batch start)" />
+                    <button onClick={() => act(a.id, "approve", startDate[a.id] ? { admissionStartDate: startDate[a.id] } : {})} className="px-4 py-2 rounded-full bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700">Approve → Student ID + Ayaan@1234</button>
+                    <button onClick={() => act(a.id, "reject")} className="px-3 py-2 rounded-full bg-white border border-slate-200 text-xs hover:bg-slate-50">Reject</button>
+                  </div>
+                )}
+                <div className="text-[11px] text-slate-400">Approve: locks batch seat (capacity-checked), generates Student ID + Digital ID, creates login (email / Ayaan@1234, must-change), migrates splits, creates Installment 1.</div>
               </div>
             )}
-            {a.status === "approved" && <div className="mt-2 text-xs text-emerald-700">✓ User account created — student can login at /login with email & password</div>}
+            {a.status === "discount_pending" && (
+              <div className="mt-3 flex gap-2 items-center flex-wrap">
+                <span className="text-xs text-sky-700">Discount ₹{Number(a.discount || 0).toLocaleString("en-IN")} awaiting super_admin.</span>
+                {isSuper && (
+                  <>
+                    <button onClick={() => act(a.id, "approve_discount")} className="px-3 py-2 rounded-full bg-emerald-600 text-white text-xs font-semibold">Approve & Lock</button>
+                    <button onClick={() => act(a.id, "reject_discount")} className="px-3 py-2 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs">Reject</button>
+                  </>
+                )}
+              </div>
+            )}
+            {a.status === "approved" && <div className="mt-2 text-xs text-emerald-700">✓ Student {a.applicantStudentId || ""} — login {a.email} / initial password, must-change on first login</div>}
             {a.status === "rejected" && <button onClick={() => act(a.id, "pending")} className="mt-2 text-xs px-3 py-1 rounded-full bg-white border">Mark Pending</button>}
           </div>
         ))}
@@ -342,29 +549,150 @@ function AdmissionsTab() {
   );
 }
 
-function DashboardTab() {
+function DashboardTab({ onOrders }: { onOrders?: () => void }) {
   const [stats, setStats] = useState<any>(null);
   const [expenses, setExpenses] = useState<any[]>([]);
+  const [newOrders, setNewOrders] = useState(0);
   useEffect(() => {
-    Promise.all([fetch("/api/admin/payments").then((r) => r.json()).catch(() => null), fetch("/api/admin/expenses").then((r) => r.json()).catch(() => []), fetch("/api/admin/admissions").then((r) => r.json()).catch(() => [])])
-      .then(([pay, exp, adm]) => {
+    Promise.all([fetch("/api/admin/payments").then((r) => r.json()).catch(() => null), fetch("/api/admin/expenses").then((r) => r.json()).catch(() => []), fetch("/api/admin/admissions").then((r) => r.json()).catch(() => []), fetch("/api/admin/orders").then((r) => r.json()).catch(() => null)])
+      .then(([pay, exp, adm, ord]) => {
         setExpenses(Array.isArray(exp) ? exp : []);
+        if (ord && typeof ord.newCount === "number") setNewOrders(ord.newCount);
         if (pay?.totals) setStats({ pay, adm: Array.isArray(adm) ? adm : [] });
       });
   }, []);
   if (!stats) return <div className="text-sm text-slate-500">Loading dashboard…</div>;
   const { payments, totals } = stats.pay;
   const pendingAdmissions = stats.adm.filter((a: any) => a.status === "pending").length;
-  const totalPayable = expenses.reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
+  // AR/AP: only approved/paid count toward payable; pending is awaiting super_admin
+  const approvedExpenses = expenses.filter((e: any) => ["approved", "paid"].includes(e.status));
+  const pendingExpenses = expenses.filter((e: any) => e.status === "pending");
+  const totalPayable = approvedExpenses.reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
   const paidPayable = expenses.filter((e: any) => e.status === "paid").reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
   const pendingPayable = totalPayable - paidPayable;
+  const pendingApprovalTotal = pendingExpenses.reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
+
+  // ---- Reports & analytics ----
+  const normMethod = (m: any) => {
+    const v = String(m || "").toLowerCase();
+    if (v === "cash") return "Cash";
+    if (v === "upi") return "UPI";
+    if (v === "bank") return "Bank Transfer";
+    if (v === "razorpay") return "Razorpay";
+    return "Other";
+  };
+  const methodMeta: Record<string, string> = {
+    Cash: CHART_COLORS.emerald,
+    UPI: CHART_COLORS.sky,
+    "Bank Transfer": CHART_COLORS.navy,
+    Razorpay: CHART_COLORS.violet,
+    Other: CHART_COLORS.slate,
+  };
+  const methodAgg: Record<string, { amount: number; count: number }> = {};
+  payments.forEach((p: any) => {
+    const k = normMethod(p.paymentMethod);
+    if (!methodAgg[k]) methodAgg[k] = { amount: 0, count: 0 };
+    methodAgg[k].amount += Number(p.collected || 0);
+    methodAgg[k].count += 1;
+  });
+  const methodSlices = Object.keys(methodAgg).map((k) => ({ label: k, value: methodAgg[k].amount, color: methodMeta[k] || CHART_COLORS.slate, count: methodAgg[k].count }));
+
+  const courseAgg: Record<string, { receivable: number; collected: number }> = {};
+  payments.forEach((p: any) => {
+    const c = String(p.course || "Other");
+    if (!courseAgg[c]) courseAgg[c] = { receivable: 0, collected: 0 };
+    courseAgg[c].receivable += Number(p.receivable || 0);
+    courseAgg[c].collected += Number(p.collected || 0);
+  });
+  const courseGroups = Object.keys(courseAgg)
+    .sort((a, b) => courseAgg[b].receivable - courseAgg[a].receivable)
+    .map((c) => ({
+      label: c,
+      bars: [
+        { label: "Collected", value: courseAgg[c].collected, color: CHART_COLORS.emerald },
+        { label: "Pending", value: Math.max(0, courseAgg[c].receivable - courseAgg[c].collected), color: CHART_COLORS.amber },
+      ],
+    }));
+
+  const catPalette = [CHART_COLORS.navy, CHART_COLORS.sky, CHART_COLORS.amber, CHART_COLORS.emerald, CHART_COLORS.violet, CHART_COLORS.rose, CHART_COLORS.teal, CHART_COLORS.slate];
+  const catAgg: Record<string, number> = {};
+  approvedExpenses.forEach((e: any) => {
+    const c = String(e.category || "General");
+    catAgg[c] = (catAgg[c] || 0) + Number(e.amount || 0);
+  });
+  const catSlices = Object.keys(catAgg)
+    .sort((a, b) => catAgg[b] - catAgg[a])
+    .map((c, i) => ({ label: c, value: catAgg[c], color: catPalette[i % catPalette.length] }));
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const months: { key: string; label: string }[] = [];
+  const now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({ key: `${d.getFullYear()}-${d.getMonth()}`, label: `${monthNames[d.getMonth()]}` });
+  }
+  const monthGroups = months.map((m) => {
+    const coll = payments
+      .filter((p: any) => {
+        const d = new Date(p.createdAt);
+        return `${d.getFullYear()}-${d.getMonth()}` === m.key;
+      })
+      .reduce((s: number, p: any) => s + Number(p.collected || 0), 0);
+    const exp = approvedExpenses
+      .filter((e: any) => {
+        const d = new Date(e.expenseDate || e.createdAt);
+        return `${d.getFullYear()}-${d.getMonth()}` === m.key;
+      })
+      .reduce((s: number, e: any) => s + Number(e.amount || 0), 0);
+    return {
+      label: m.label,
+      bars: [
+        { label: "Collected", value: coll, color: CHART_COLORS.emerald },
+        { label: "Expenses", value: exp, color: CHART_COLORS.rose },
+      ],
+    };
+  });
   return (
     <div className="grid gap-6">
+      {newOrders > 0 && (
+        <button onClick={onOrders} className="text-left p-4 rounded-2xl bg-red-50 border border-red-200 flex items-center gap-3 hover:bg-red-100/60 transition">
+          <span className="w-10 h-10 rounded-full bg-red-600 text-white grid place-items-center font-bold shrink-0">{newOrders}</span>
+          <span>
+            <span className="block text-sm font-semibold text-red-800">🔔 {newOrders} new store order{newOrders > 1 ? "s" : ""} need{newOrders > 1 ? "" : "s"} attention</span>
+            <span className="block text-xs text-red-600">Placed / payment confirmed — tap to open Orders →</span>
+          </span>
+        </button>
+      )}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card p-5"><div className="text-xs tracking-widest font-semibold text-sky-700">ACCOUNTS RECEIVABLE</div><div className="text-2xl font-bold text-navy-900 mt-1">₹{totals.totalReceivable.toLocaleString("en-IN")}</div><div className="text-xs text-slate-500">Total fees receivable • {totals.count} admissions</div><div className="mt-3 flex gap-2 text-xs"><span className="px-2 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">Collected ₹{totals.totalCollected.toLocaleString("en-IN")}</span><span className="px-2 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700">Pending ₹{totals.totalPending.toLocaleString("en-IN")}</span></div></div>
-        <div className="card p-5"><div className="text-xs tracking-widest font-semibold text-amber-700">ACCOUNTS PAYABLE</div><div className="text-2xl font-bold text-navy-900 mt-1">₹{totalPayable.toLocaleString("en-IN")}</div><div className="text-xs text-slate-500">{expenses.length} expenses</div><div className="mt-3 flex gap-2 text-xs"><span className="px-2 py-1 rounded-full bg-slate-100 border">Paid ₹{paidPayable.toLocaleString("en-IN")}</span><span className="px-2 py-1 rounded-full bg-red-50 border border-red-200 text-red-700">Due ₹{pendingPayable.toLocaleString("en-IN")}</span></div></div>
+        <div className="card p-5"><div className="text-xs tracking-widest font-semibold text-amber-700">ACCOUNTS PAYABLE</div><div className="text-2xl font-bold text-navy-900 mt-1">₹{totalPayable.toLocaleString("en-IN")}</div><div className="text-xs text-slate-500">{approvedExpenses.length} approved • {pendingExpenses.length} pending approval • ₹{pendingApprovalTotal.toLocaleString("en-IN")} awaiting super_admin</div><div className="mt-3 flex gap-2 text-xs"><span className="px-2 py-1 rounded-full bg-slate-100 border">Paid ₹{paidPayable.toLocaleString("en-IN")}</span><span className="px-2 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700">Due ₹{pendingPayable.toLocaleString("en-IN")}</span><span className="px-2 py-1 rounded-full bg-red-50 border border-red-200 text-red-700">Pending Appr. ₹{pendingApprovalTotal.toLocaleString("en-IN")}</span></div></div>
         <div className="card p-5"><div className="text-xs tracking-widest font-semibold text-emerald-700">NET POSITION</div><div className={`text-2xl font-bold mt-1 ${totals.totalCollected - totalPayable >= 0 ? "text-emerald-700" : "text-red-600"}`}>₹{(totals.totalCollected - totalPayable).toLocaleString("en-IN")}</div><div className="text-xs text-slate-500">Collected - Payable</div><div className="mt-3 text-xs text-slate-500">Profitability at a glance</div></div>
         <div className="card p-5"><div className="text-xs tracking-widest font-semibold text-violet-700">STUDENTS & ADMISSIONS</div><div className="text-2xl font-bold text-navy-900 mt-1">{stats.pay.usersCount} <span className="text-sm font-normal text-slate-500">students</span></div><div className="text-xs text-slate-500">{pendingAdmissions} pending admissions • {payments.filter((p: any) => p.paymentMethod === "cash").length} cash</div><div className="mt-3 flex gap-2 text-xs"><span className="px-2 py-1 rounded-full bg-white border">UPI: {payments.filter((p: any) => p.paymentMethod === "upi").length}</span><span className="px-2 py-1 rounded-full bg-white border">Bank: {payments.filter((p: any) => p.paymentMethod === "bank").length}</span></div></div>
+      </div>
+      <div>
+        <div className="text-xs tracking-widest font-semibold text-slate-500">REPORTS & ANALYTICS</div>
+        <div className="mt-3 grid lg:grid-cols-2 gap-4">
+          <div className="card p-5">
+            <div className="font-semibold text-navy-900">Fee Collection by Method</div>
+            <div className="text-xs text-slate-500 mt-1">Cash vs UPI vs Bank Transfer — collected amounts (counts in brackets)</div>
+            <div className="mt-4"><DonutChart data={methodSlices} /></div>
+          </div>
+          <div className="card p-5">
+            <div className="font-semibold text-navy-900">Expenses by Category</div>
+            <div className="text-xs text-slate-500 mt-1">Approved + paid only — pending approval excluded</div>
+            <div className="mt-4"><DonutChart data={catSlices} /></div>
+          </div>
+        </div>
+        <div className="mt-4 card p-5">
+          <div className="font-semibold text-navy-900">Student Fees by Course</div>
+          <div className="text-xs text-slate-500 mt-1">Receivable split into collected vs pending per course</div>
+          <div className="mt-4"><GroupedBarChart groups={courseGroups} /></div>
+        </div>
+        <div className="mt-4 card p-5">
+          <div className="font-semibold text-navy-900">Collections vs Expenses — Last 6 Months</div>
+          <div className="text-xs text-slate-500 mt-1">Collected fees vs approved + paid expenses per month</div>
+          <div className="mt-4"><GroupedBarChart groups={monthGroups} height={180} /></div>
+        </div>
       </div>
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="card p-5"><div className="font-semibold text-navy-900">Recent Payments</div><div className="mt-3 grid gap-2">{payments.slice(0, 5).map((p: any) => (<div key={p.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-slate-50"><div><div className="text-sm font-medium text-navy-900">{p.student} • {p.course}</div><div className="text-xs text-slate-500">{p.paymentMethod} • {p.status} • ₹{p.amount.toLocaleString("en-IN")}</div></div><span className={`text-xs px-2 py-1 rounded-full border ${p.collected ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700"}`}>{p.collected ? "Collected" : "Pending"}</span></div>))}{payments.length === 0 && <div className="text-sm text-slate-500">No payments yet</div>}</div></div>
@@ -595,8 +923,10 @@ function FinanceTab() {
   };
   const totalReceivable = payments?.totals.totalReceivable || 0;
   const totalCollected = payments?.totals.totalCollected || 0;
-  const totalPayable = expenses.reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const approvedExpenses = expenses.filter((e: any) => ["approved", "paid"].includes(e.status));
+  const totalPayable = approvedExpenses.reduce((s: number, e: any) => s + Number(e.amount), 0);
   const paidPayable = expenses.filter((e: any) => e.status === "paid").reduce((s: number, e: any) => s + Number(e.amount), 0);
+  const pendingApproval = expenses.filter((e: any) => e.status === "pending").reduce((s: number, e: any) => s + Number(e.amount), 0);
   return (
     <div className="grid lg:grid-cols-12 gap-6">
       <div className="lg:col-span-7">
@@ -640,7 +970,7 @@ function FinanceTab() {
           <input value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} placeholder="Vendor / Payee" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
           <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
           <button onClick={save} className="btn-primary justify-center">Add Payable →</button>
-          <div className="p-3 rounded-xl bg-slate-50 border text-xs text-slate-600"><b>Net:</b> ₹{(totalCollected - totalPayable).toLocaleString("en-IN")} (Collected - Payable) • Paid Payables: ₹{paidPayable.toLocaleString("en-IN")} • Due: ₹{(totalPayable - paidPayable).toLocaleString("en-IN")}</div>
+          <div className="p-3 rounded-xl bg-slate-50 border text-xs text-slate-600"><b>Net:</b> ₹{(totalCollected - totalPayable).toLocaleString("en-IN")} (Collected - Approved Payable) • Paid: ₹{paidPayable.toLocaleString("en-IN")} • Due: ₹{(totalPayable - paidPayable).toLocaleString("en-IN")} • <span className="text-amber-700">Pending Approval: ₹{pendingApproval.toLocaleString("en-IN")}</span> • Use Expense Tracker for detailed tracker (paid by/via/date → super_admin approval)</div>
         </div>
       </div>
     </div>
@@ -650,10 +980,13 @@ function FinanceTab() {
 function LeadsTab() {
   const [list, setList] = useState<any[]>([]);
   const [filter, setFilter] = useState<"all" | "new" | "contacted" | "converted">("all");
+  const [q, setQ] = useState("");
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ notes: "", freeText: "", employeeName: "", dueDate: "", status: "new" });
   const load = () => fetch("/api/admin/leads").then((r) => r.json()).then((d) => Array.isArray(d) && setList(d)).catch(() => {});
   useEffect(() => { load(); }, []);
-  const update = async (id: string, status: string) => {
-    await fetch("/api/admin/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status }) });
+  const update = async (id: string, patch: any) => {
+    await fetch("/api/admin/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...patch }) });
     load();
   };
   const del = async (id: string) => {
@@ -661,39 +994,247 @@ function LeadsTab() {
     await fetch(`/api/admin/leads?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     load();
   };
-  const filtered = list.filter((x) => filter === "all" || x.status === filter);
+  const startEdit = (x: any) => {
+    setEditId(x.id);
+    setEditForm({
+      notes: x.notes || "",
+      freeText: x.freeText || "",
+      employeeName: x.employeeName || "",
+      dueDate: x.dueDate ? new Date(x.dueDate).toISOString().slice(0, 10) : "",
+      status: x.status,
+    });
+  };
+  const saveEdit = async () => {
+    if (!editId) return;
+    await update(editId, {
+      notes: editForm.notes,
+      freeText: editForm.freeText,
+      employeeName: editForm.employeeName,
+      dueDate: editForm.dueDate || null,
+      status: editForm.status,
+    });
+    setEditId(null);
+  };
+  const exportCsv = () => {
+    const headers = ["id", "name", "phone", "course", "medium", "mode", "status", "employeeName", "lastActionAt", "dueDate", "notes", "freeText", "createdAt"];
+    const rows = list.map((x) => headers.map((h) => {
+      let v = x[h] ?? "";
+      if (h === "lastActionAt" || h === "dueDate" || h === "createdAt") v = v ? new Date(v).toLocaleString("en-IN") : "";
+      v = String(v).replace(/"/g, '""');
+      return `"${v}"`;
+    }).join(","));
+    const csv = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const exportXlsx = () => {
+    // Excel-compatible CSV with BOM
+    const headers = ["Name", "Phone", "Course", "Medium", "Mode", "Status", "Employee", "Last Action", "Due Date", "Notes", "Free Text", "Created"];
+    const rows = list.map((x) => [
+      x.name, x.phone, x.course || "", x.medium || "", x.mode || "", x.status,
+      x.employeeName || "", x.lastActionAt ? new Date(x.lastActionAt).toLocaleString("en-IN") : "",
+      x.dueDate ? new Date(x.dueDate).toLocaleDateString("en-IN") : "",
+      (x.notes || "").replace(/\n/g, " "), (x.freeText || "").replace(/\n/g, " "),
+      x.createdAt ? new Date(x.createdAt).toLocaleString("en-IN") : "",
+    ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","));
+    const csv = "\uFEFF" + [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `leads-${new Date().toISOString().slice(0, 10)}.xls`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const onImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    if (lines.length < 2) return alert("Empty or invalid file");
+    const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, "").toLowerCase());
+    const idx = (name: string) => headers.indexOf(name);
+    const get = (cols: string[], name: string) => {
+      const i = idx(name);
+      if (i === -1) return "";
+      return (cols[i] || "").replace(/^"|"$/g, "").trim();
+    };
+    const parseCsvLine = (line: string) => {
+      const cols: string[] = [];
+      let cur = "", inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; continue; }
+        if (ch === '"') { inQ = !inQ; continue; }
+        if (ch === "," && !inQ) { cols.push(cur); cur = ""; continue; }
+        cur += ch;
+      }
+      cols.push(cur);
+      return cols;
+    };
+    const leads: any[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cols = parseCsvLine(lines[i]);
+      const name = get(cols, "name") || get(cols, "Name");
+      const phone = get(cols, "phone") || get(cols, "Phone");
+      if (!name || !phone) continue;
+      leads.push({
+        name, phone,
+        course: get(cols, "course") || get(cols, "Course"),
+        medium: get(cols, "medium") || get(cols, "Medium"),
+        mode: get(cols, "mode") || get(cols, "Mode"),
+        status: get(cols, "status") || get(cols, "Status") || "new",
+        employeeName: get(cols, "employee") || get(cols, "employeename") || "",
+        notes: get(cols, "notes") || "",
+        freeText: get(cols, "freetext") || get(cols, "free text") || get(cols, "freeText") || "",
+        dueDate: get(cols, "due date") || get(cols, "duedate") || null,
+      });
+    }
+    if (leads.length === 0) return alert("No valid rows found (need name, phone)");
+    if (!confirm(`Import ${leads.length} lead(s)? Existing phones will be skipped.`)) return;
+    const r = await fetch("/api/admin/leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ leads }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) { alert(`Imported ${d.imported} lead(s)`); load(); }
+    else alert(d.error || "Import failed");
+    e.target.value = "";
+  };
+
+  const fmtLastAction = (v: string | null) => {
+    if (!v) return "—";
+    const d = new Date(v);
+    const diff = Date.now() - d.getTime();
+    if (diff < 60000) return "just now";
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    return d.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  };
+  const fmtDue = (v: string | null) => {
+    if (!v) return "—";
+    const d = new Date(v);
+    const isOverdue = d.getTime() < Date.now() && d.toDateString() !== new Date().toDateString();
+    return <span className={isOverdue ? "text-red-600 font-medium" : ""}>{d.toLocaleDateString("en-IN")}{isOverdue ? " • Overdue" : ""}</span>;
+  };
+
+  const filtered = list.filter((x) => {
+    const fOk = filter === "all" || x.status === filter;
+    const qOk = !q || `${x.name} ${x.phone} ${x.employeeName || ""} ${x.notes || ""}`.toLowerCase().includes(q.toLowerCase());
+    return fOk && qOk;
+  });
+
   return (
-    <div className="card p-6">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-semibold text-navy-900">Join Leads • {list.length}</h2>
-        <div className="flex gap-1">
-          {(["all", "new", "contacted", "converted"] as const).map((f) => (
-            <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 rounded-full text-xs border capitalize ${filter === f ? "bg-navy-900 text-white border-navy-900" : "bg-white border-slate-200"}`}>{f} ({f === "all" ? list.length : list.filter((x) => x.status === f).length})</button>
-          ))}
+    <div className="card p-4 sm:p-6">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-navy-900">Leads • {list.length} <span className="font-normal text-slate-500">— tabular</span></h2>
+          <div className="text-xs text-slate-500 mt-1">From Home → “Find your batch” → Join (name + mobile). Add notes, assign employee, set due date.</div>
+        </div>
+        <div className="flex flex-wrap gap-2 items-center">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, phone, employee…" className="px-3 py-2 rounded-full border border-slate-200 text-sm w-44" />
+          <label className="px-3 py-2 rounded-full bg-white border border-slate-200 text-xs hover:bg-slate-50 cursor-pointer">Import CSV/Excel<input type="file" accept=".csv,.xls,.xlsx" onChange={onImport} className="hidden" /></label>
+          <button onClick={exportCsv} className="px-3 py-2 rounded-full bg-white border border-slate-200 text-xs hover:bg-slate-50">Export CSV</button>
+          <button onClick={exportXlsx} className="px-3 py-2 rounded-full bg-navy-900 text-white text-xs">Export Excel</button>
         </div>
       </div>
-      <div className="mt-1 text-xs text-slate-500">From Home → “Find your batch” → Join (name + mobile)</div>
-      <div className="mt-4 grid gap-3">
-        {filtered.map((x) => (
-          <div key={x.id} className="p-4 rounded-2xl border border-slate-200 bg-white flex items-center justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold text-navy-900">{x.name} • <a href={`tel:${x.phone}`} className="text-sky-700 hover:underline">{x.phone}</a></div>
-              <div className="text-xs text-slate-600 mt-1">{x.course} • {x.medium} • {x.mode} {x.batchId ? `• ${x.batchId}` : ""}</div>
-              <div className="text-xs text-slate-400 mt-1">{new Date(x.createdAt).toLocaleString("en-IN")} • {x.id} • <span className={`px-2 py-1 rounded-full border text-xs ${x.status === "new" ? "bg-amber-50 border-amber-200 text-amber-700" : x.status === "contacted" ? "bg-sky-50 border-sky-200 text-sky-700" : "bg-emerald-50 border-emerald-200 text-emerald-700"}`}>{x.status}</span></div>
-            </div>
-            <div className="flex gap-1 shrink-0">
-              <a href={`tel:${x.phone}`} className="px-3 py-1.5 rounded-full bg-emerald-600 text-white text-xs">Call</a>
-              <select value={x.status} onChange={(e) => update(x.id, e.target.value)} className="px-2 py-1.5 rounded-full border border-slate-200 text-xs bg-white">
-                <option value="new">new</option>
-                <option value="contacted">contacted</option>
-                <option value="converted">converted</option>
-              </select>
-              <button onClick={() => del(x.id)} className="px-2 py-1.5 rounded-full bg-red-50 border border-red-200 text-xs text-red-700">✕</button>
-            </div>
-          </div>
+
+      <div className="mt-3 flex gap-1 flex-wrap">
+        {(["all", "new", "contacted", "converted"] as const).map((f) => (
+          <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 rounded-full text-xs border capitalize ${filter === f ? "bg-navy-900 text-white border-navy-900" : "bg-white border-slate-200"}`}>{f} ({f === "all" ? list.length : list.filter((x) => x.status === f).length})</button>
         ))}
-        {filtered.length === 0 && <div className="text-sm text-slate-500 text-center py-8">No {filter} leads yet — they appear here when someone clicks Join on home.</div>}
+        <span className="ml-2 text-xs text-slate-500 self-center">Showing {filtered.length}</span>
       </div>
+
+      {/* Table */}
+      <div className="mt-4 overflow-auto border border-slate-200 rounded-2xl">
+        <table className="w-full text-sm min-w-[980px]">
+          <thead className="bg-slate-50 text-xs text-slate-600">
+            <tr>
+              <th className="text-left px-3 py-2 font-semibold">Name / Phone</th>
+              <th className="text-left px-3 py-2 font-semibold">Course</th>
+              <th className="text-left px-3 py-2 font-semibold">Status</th>
+              <th className="text-left px-3 py-2 font-semibold">Employee</th>
+              <th className="text-left px-3 py-2 font-semibold">Last Action</th>
+              <th className="text-left px-3 py-2 font-semibold">Due Date</th>
+              <th className="text-left px-3 py-2 font-semibold">Notes</th>
+              <th className="text-left px-3 py-2 font-semibold">Free Text</th>
+              <th className="text-center px-3 py-2 font-semibold">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {filtered.map((x) => (
+              <tr key={x.id} className="hover:bg-slate-50/70">
+                <td className="px-3 py-2">
+                  <div className="font-medium text-navy-900">{x.name}</div>
+                  <a href={`tel:${x.phone}`} className="text-xs text-sky-700 hover:underline">{x.phone}</a>
+                  <div className="text-[11px] text-slate-400">{new Date(x.createdAt).toLocaleDateString("en-IN")}</div>
+                </td>
+                <td className="px-3 py-2 text-xs">{x.course || "—"}<div className="text-slate-500">{x.medium} • {x.mode}</div></td>
+                <td className="px-3 py-2">
+                  {editId === x.id ? (
+                    <select value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })} className="px-2 py-1 rounded-full border text-xs bg-white">
+                      <option value="new">new</option><option value="contacted">contacted</option><option value="converted">converted</option>
+                    </select>
+                  ) : (
+                    <span className={`px-2 py-1 rounded-full border text-xs ${x.status === "new" ? "bg-amber-50 border-amber-200 text-amber-700" : x.status === "contacted" ? "bg-sky-50 border-sky-200 text-sky-700" : "bg-emerald-50 border-emerald-200 text-emerald-700"}`}>{x.status}</span>
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  {editId === x.id ? (
+                    <input value={editForm.employeeName} onChange={(e) => setEditForm({ ...editForm, employeeName: e.target.value })} placeholder="Employee name" className="w-28 px-2 py-1 rounded-lg border text-xs" />
+                  ) : (
+                    <span className="text-xs">{x.employeeName || <span className="text-slate-400">—</span>}</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-xs whitespace-nowrap">{fmtLastAction(x.lastActionAt || x.updatedAt)}</td>
+                <td className="px-3 py-2 text-xs whitespace-nowrap">
+                  {editId === x.id ? (
+                    <input type="date" value={editForm.dueDate} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} className="px-2 py-1 rounded-lg border text-xs" />
+                  ) : (
+                    fmtDue(x.dueDate)
+                  )}
+                </td>
+                <td className="px-3 py-2 max-w-[160px]">
+                  {editId === x.id ? (
+                    <input value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} placeholder="Notes" className="w-full px-2 py-1 rounded-lg border text-xs" />
+                  ) : (
+                    <span className="text-xs line-clamp-2" title={x.notes}>{x.notes || <span className="text-slate-400">—</span>}</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 max-w-[160px]">
+                  {editId === x.id ? (
+                    <textarea value={editForm.freeText} onChange={(e) => setEditForm({ ...editForm, freeText: e.target.value })} placeholder="Free text" rows={2} className="w-full px-2 py-1 rounded-lg border text-xs" />
+                  ) : (
+                    <span className="text-xs line-clamp-2" title={x.freeText}>{x.freeText || <span className="text-slate-400">—</span>}</span>
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  <div className="flex gap-1 justify-center">
+                    {editId === x.id ? (
+                      <>
+                        <button onClick={saveEdit} className="px-2 py-1 rounded-full bg-emerald-600 text-white text-xs">Save</button>
+                        <button onClick={() => setEditId(null)} className="px-2 py-1 rounded-full bg-white border text-xs">Cancel</button>
+                      </>
+                    ) : (
+                      <>
+                        <a href={`tel:${x.phone}`} className="w-7 h-7 rounded-full bg-emerald-600 text-white grid place-items-center text-xs" title="Call">☎</a>
+                        <button onClick={() => startEdit(x)} className="w-7 h-7 rounded-full bg-white border grid place-items-center text-xs" title="Edit">✎</button>
+                        <button onClick={() => del(x.id)} className="w-7 h-7 rounded-full bg-red-50 border border-red-200 text-red-700 grid place-items-center text-xs">✕</button>
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {filtered.length === 0 && <div className="text-sm text-slate-500 text-center py-8">No {filter} leads — try import or wait for home Joins.</div>}
+      </div>
+
+      <div className="mt-3 text-xs text-slate-500">Tip: Employee = assigned counsellor. Last Action auto-updates on any edit. Due Date highlights overdue in red. Export includes all columns for Excel.</div>
     </div>
   );
 }
@@ -702,12 +1243,28 @@ function AlumniTab() {
   const [list, setList] = useState<any[]>([]);
   const [form, setForm] = useState({ id: "", name: "", role: "", batch: "", course: "Constable", quote: "", video: "", image: "", featured: false });
   const [editing, setEditing] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState("");
   const load = () => fetch("/api/admin/alumni").then((r) => r.json()).then((d) => Array.isArray(d) && setList(d)).catch(() => {});
   useEffect(() => { load(); }, []);
+  const uploadImage = async (f: File | undefined) => {
+    if (!f) return;
+    setUploadErr("");
+    if (!["image/jpeg", "image/png", "image/webp"].includes(f.type)) return setUploadErr("Only JPG, PNG or WEBP allowed");
+    if (f.size > 2 * 1024 * 1024) return setUploadErr("Image must be under 2MB");
+    setUploading(true);
+    const fd = new FormData();
+    fd.append("file", f);
+    const r = await fetch("/api/admin/alumni/upload", { method: "POST", body: fd });
+    const d = await r.json().catch(() => ({}));
+    setUploading(false);
+    if (r.ok && d.url) setForm({ ...form, image: d.url });
+    else setUploadErr(d.error || "Upload failed");
+  };
   const save = async () => {
     if (!form.name.trim() || !form.quote.trim()) return alert("Name and quote required");
     const r = await fetch("/api/admin/alumni", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-    if (r.ok) { setForm({ id: "", name: "", role: "", batch: "", course: "Constable", quote: "", video: "", image: "", featured: false }); setEditing(null); load(); }
+    if (r.ok) { setForm({ id: "", name: "", role: "", batch: "", course: "Constable", quote: "", video: "", image: "", featured: false }); setEditing(null); setUploadErr(""); load(); }
     else alert("Failed");
   };
   const del = async (id: string) => {
@@ -724,11 +1281,14 @@ function AlumniTab() {
           {list.map((a) => (
             <div key={a.id} className="p-4 rounded-2xl border border-slate-200 bg-white">
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="flex gap-3">
+                  {a.image ? <img src={a.image} alt={a.name} className="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0" /> : <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 grid place-items-center text-xs font-bold text-slate-500 shrink-0">{a.name[0]}</div>}
+                  <div>
                   <div className="text-sm font-semibold text-navy-900">{a.name} <span className="text-xs font-normal text-slate-500">• {a.role}</span> {a.featured && <span className="ml-1 text-xs px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700">Featured</span>}</div>
                   <div className="text-xs text-slate-500 mt-1">{a.batch} • {a.course} • {a.createdAt}</div>
                   <div className="text-sm text-slate-700 mt-2 line-clamp-2">“{a.quote}”</div>
                   {a.video && <div className="text-xs text-sky-700 mt-1 truncate">▶ {a.video}</div>}
+                  </div>
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button onClick={() => { setEditing(a.id); setForm({ id: a.id, name: a.name, role: a.role, batch: a.batch, course: a.course, quote: a.quote, video: a.video, image: a.image, featured: !!a.featured }); }} className="px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs">Edit</button>
@@ -750,7 +1310,23 @@ function AlumniTab() {
           </div>
           <textarea value={form.quote} onChange={(e) => setForm({ ...form, quote: e.target.value })} placeholder="Quote * — testimonial text" rows={4} className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
           <input value={form.video} onChange={(e) => setForm({ ...form, video: e.target.value })} placeholder="YouTube link (e.g., https://www.youtube.com/watch?v=...)" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
-          <input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="Image URL (or leave blank)" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+          <div>
+            <label className="text-xs font-medium text-slate-700">Alumni photo — upload (JPG/PNG/WEBP, max 2MB)</label>
+            <div className="mt-1 flex items-center gap-3">
+              {form.image ? (
+                <img src={form.image} alt="preview" className="w-14 h-14 rounded-full object-cover border border-slate-200" />
+              ) : (
+                <div className="w-14 h-14 rounded-full bg-slate-100 border border-slate-200 grid place-items-center text-xs text-slate-400">No img</div>
+              )}
+              <label className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm hover:bg-slate-50 cursor-pointer">
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => uploadImage(e.target.files?.[0])} className="hidden" />
+                {uploading ? "Uploading…" : form.image ? "Replace image…" : "Upload image…"}
+              </label>
+              {form.image && <button onClick={() => setForm({ ...form, image: "" })} className="text-xs text-red-600 hover:underline">Remove</button>}
+            </div>
+            {uploadErr && <div className="mt-1 text-xs text-red-600">{uploadErr}</div>}
+            <input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="…or paste image URL" className="mt-2 px-3 py-2.5 rounded-xl border border-slate-200 text-sm w-full" />
+          </div>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} /> Featured on home</label>
           <div className="flex gap-2">
             <button onClick={save} className="flex-1 btn-primary justify-center">{editing ? "Update" : "Add"} Alumni</button>
@@ -764,14 +1340,14 @@ function AlumniTab() {
 
 function StoreStockTab() {
   const [list, setList] = useState<any[]>([]);
-  const [form, setForm] = useState({ id: "", name: "", price: 0, category: "Gear", stock: 0, threshold: 5, sku: "", image: "" });
+  const [form, setForm] = useState({ id: "", name: "", price: 0, category: "Gear", stock: 0, threshold: 5, sku: "", image: "", sizes: "" });
   const [editing, setEditing] = useState<string | null>(null);
   const load = () => fetch("/api/admin/store").then((r) => r.json()).then((d) => Array.isArray(d) && setList(d)).catch(() => {});
   useEffect(() => { load(); }, []);
   const save = async () => {
     if (!form.name.trim() || !form.price) return alert("Name and price required");
     const r = await fetch("/api/admin/store", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-    if (r.ok) { setForm({ id: "", name: "", price: 0, category: "Gear", stock: 0, threshold: 5, sku: "", image: "" }); setEditing(null); load(); }
+    if (r.ok) { setForm({ id: "", name: "", price: 0, category: "Gear", stock: 0, threshold: 5, sku: "", image: "", sizes: "" }); setEditing(null); load(); }
   };
   const quick = async (id: string, delta: number) => { await fetch("/api/admin/store", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, delta }) }); load(); };
   const setStock = async (id: string, stock: number) => { await fetch("/api/admin/store", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, stock }) }); load(); };
@@ -789,14 +1365,14 @@ function StoreStockTab() {
           {list.map((it) => (
             <div key={it.id} className="p-4 rounded-2xl border border-slate-200 bg-white flex items-center justify-between gap-3">
               <div className="flex-1">
-                <div className="text-sm font-semibold text-navy-900">{it.name} <span className="text-xs font-normal text-slate-500">• {it.category} • {it.sku}</span></div>
+                <div className="text-sm font-semibold text-navy-900">{it.name} <span className="text-xs font-normal text-slate-500">• {it.category} • {it.sku}{Array.isArray(it.sizes) && it.sizes.length > 0 ? ` • Sizes: ${it.sizes.join(", ")}` : ""}</span></div>
                 <div className="text-sm font-bold text-navy-900">₹{it.price.toLocaleString("en-IN")} • <span className={`text-xs px-2 py-1 rounded-full border ${it.stock === 0 ? "bg-red-50 border-red-200 text-red-700" : it.stock <= it.threshold ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-emerald-50 border-emerald-200 text-emerald-700"}`}>{it.stock === 0 ? "Out" : it.stock <= it.threshold ? `Low: ${it.stock}` : `In: ${it.stock}`}</span></div>
               </div>
               <div className="flex items-center gap-1">
                 <button onClick={() => quick(it.id, -1)} className="w-8 h-8 rounded-full border border-slate-200 grid place-items-center hover:bg-slate-50">−</button>
                 <input type="number" value={it.stock} onChange={(e) => setStock(it.id, Number(e.target.value))} className="w-16 px-2 py-1 rounded-full border border-slate-200 text-center text-sm" />
                 <button onClick={() => quick(it.id, 1)} className="w-8 h-8 rounded-full border border-slate-200 grid place-items-center hover:bg-slate-50">+</button>
-                <button onClick={() => { setEditing(it.id); setForm(it); }} className="ml-2 px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs">Edit</button>
+                <button onClick={() => { setEditing(it.id); setForm({ id: it.id, name: it.name, price: it.price, category: it.category, stock: it.stock, threshold: it.threshold, sku: it.sku || "", image: it.image || "", sizes: Array.isArray(it.sizes) ? it.sizes.join(", ") : (it.sizes || "") }); }} className="ml-2 px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs">Edit</button>
                 <button onClick={() => del(it.id)} className="px-2 py-1.5 rounded-full bg-red-50 border border-red-200 text-xs text-red-700">✕</button>
               </div>
             </div>
@@ -817,9 +1393,13 @@ function StoreStockTab() {
             <div><label className="text-xs text-slate-500">Low threshold</label><input type="number" value={form.threshold} onChange={(e) => setForm({ ...form, threshold: Number(e.target.value) })} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" /></div>
           </div>
           <input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="Image URL (optional)" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+          <div>
+            <input value={form.sizes} onChange={(e) => setForm({ ...form, sizes: e.target.value })} placeholder="Sizes (optional, e.g., S, M, L, XL, XXL — blank = no size)" className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm w-full" />
+            <div className="text-xs text-slate-400 mt-1">Leave blank for products without sizing. Size is required at checkout when set.</div>
+          </div>
           <div className="flex gap-2">
             <button onClick={save} className="flex-1 btn-primary justify-center">{editing ? "Update" : "Add"} Item</button>
-            <button onClick={() => { setEditing(null); setForm({ id: "", name: "", price: 0, category: "Gear", stock: 0, threshold: 5, sku: "", image: "" }); }} className="px-4 py-2.5 rounded-full border border-slate-200 text-sm">Clear</button>
+            <button onClick={() => { setEditing(null); setForm({ id: "", name: "", price: 0, category: "Gear", stock: 0, threshold: 5, sku: "", image: "", sizes: "" }); }} className="px-4 py-2.5 rounded-full border border-slate-200 text-sm">Clear</button>
           </div>
           <div className="text-xs text-slate-400">Stock 0 = Out of stock (button disabled on store). Low stock shows amber badge.</div>
         </div>
@@ -922,6 +1502,1128 @@ function BannerTab() {
           </ul>
         </div>
       </div>
+    </div>
+  );
+}
+
+const FEE_FALLBACK: Record<string, Record<string, number>> = {
+  SI: { Residential: 35000, Offline: 25000, Online: 15000 },
+  Constable: { Residential: 28000, Offline: 18000, Online: 10800 },
+  Groups: { Residential: 32000, Offline: 22000, Online: 13200 },
+  "SSC GD": { Residential: 25000, Offline: 15000, Online: 9000 },
+  Defence: { Residential: 30000, Offline: 20000, Online: 12000 },
+  Army: { Residential: 30000, Offline: 20000, Online: 12000 },
+  UPSC: { Residential: 75000, Offline: 45000, Online: 27000 },
+};
+
+function FeeConfigTab() {
+  const [fees, setFees] = useState<any[]>([]);
+  const [durations, setDurations] = useState<{ id: string; name: string; months: number }[]>([]);
+  const [mediums, setMediums] = useState<{ id?: string; name: string }[]>([]);
+  const [branches, setBranches] = useState<{ id?: string; name: string }[]>([]);
+  const [durKey, setDurKey] = useState<string>("");
+  const [medKey, setMedKey] = useState<string>("");
+  const [brKey, setBrKey] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const courses = ["SI", "Constable", "Groups", "SSC GD", "Defence", "Army", "UPSC"];
+  const modes = ["Residential", "Offline", "Online"] as const;
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [fr, dr, mr, br] = await Promise.all([
+        fetch("/api/admin/fees", { cache: "no-store" }),
+        fetch("/api/durations", { cache: "no-store" }),
+        fetch("/api/mediums", { cache: "no-store" }),
+        fetch("/api/branches", { cache: "no-store" }),
+      ]);
+      const fd = await fr.json();
+      if (Array.isArray(fd)) setFees(fd);
+      const dd = await dr.json();
+      if (Array.isArray(dd)) setDurations(dd);
+      const md = await mr.json();
+      if (Array.isArray(md)) setMediums(md.map((m: any) => ({ id: m.id, name: m.name })));
+      const bd = await br.json();
+      if (Array.isArray(bd)) setBranches(bd.map((b: any) => ({ id: b.id, name: b.name })));
+    } catch {}
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const norm = (v: any) => (v === undefined || v === null ? "" : String(v));
+  // Fallback chain for the current picker key: exact → peel branch → peel medium → peel duration → all-base
+  const chainFor = (): [string, string, string][] => {
+    const chain: [string, string, string][] = [[durKey, medKey, brKey], [durKey, medKey, ""], [durKey, "", ""], ["", "", ""]];
+    const seen = new Set<string>();
+    return chain.filter(([d, m, b]) => {
+      const k = `${d}|${m}|${b}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  };
+  // Resolve inherited value for placeholder (first hit below the exact key)
+  const inheritedFee = (course: string, mode: string): number | string => {
+    const chain = chainFor().slice(1);
+    for (const [d, m, b] of chain) {
+      const f = fees.find((x) => x.course === course && x.mode === mode && norm(x.duration) === d && norm(x.medium) === m && norm(x.branch) === b);
+      if (f) return f.amount;
+    }
+    return FEE_FALLBACK[course]?.[mode] ?? "";
+  };
+  const hardcodedFee = (course: string, mode: string): number | string => FEE_FALLBACK[course]?.[mode] ?? "";
+  const getFee = (course: string, mode: string) => {
+    const f = fees.find((x) => x.course === course && x.mode === mode && norm(x.duration) === durKey && norm(x.medium) === medKey && norm(x.branch) === brKey);
+    return f ? f.amount : "";
+  };
+  const placeholderFor = (course: string, mode: string) => {
+    if (durKey === "" && medKey === "" && brKey === "") {
+      const h = hardcodedFee(course, mode);
+      return h === "" || h === undefined ? "—" : `Base ${Number(h).toLocaleString("en-IN")}`;
+    }
+    const v = inheritedFee(course, mode);
+    return v === "" || v === undefined ? "—" : `Inherits ₹${Number(v).toLocaleString("en-IN")}`;
+  };
+  const setFee = (course: string, mode: string, amount: string) => {
+    const val = amount === "" ? "" : Math.max(0, Number(amount));
+    const idx = fees.findIndex((x) => x.course === course && x.mode === mode && norm(x.duration) === durKey && norm(x.medium) === medKey && norm(x.branch) === brKey);
+    if (idx >= 0) {
+      const next = [...fees];
+      next[idx] = { ...next[idx], amount: val === "" ? "" : val };
+      setFees(next);
+    } else {
+      setFees([...fees, { course, mode, duration: durKey, medium: medKey, branch: brKey, amount: val === "" ? "" : val }]);
+    }
+  };
+
+  const saveAll = async () => {
+    setSaving(true);
+    // Send the full visible grid for the selected key; blanks delete that row (falls back up the chain)
+    const payload = courses.flatMap((course) =>
+      modes.map((mode) => {
+        const row = fees.find((x) => x.course === course && x.mode === mode && norm(x.duration) === durKey && norm(x.medium) === medKey && norm(x.branch) === brKey);
+        const amount = row ? row.amount : "";
+        return { course, mode, duration: durKey, medium: medKey, branch: brKey, amount: amount === "" ? null : Number(amount) };
+      })
+    );
+    const r = await fetch("/api/admin/fees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fees: payload }) });
+    setSaving(false);
+    if (r.ok) { setSaved(true); setTimeout(() => setSaved(false), 2500); load(); }
+    else alert("Failed to save");
+  };
+
+  const resetFallback = async () => {
+    if (!confirm("Reset BASE fees to defaults? This will overwrite base values (duration overrides are kept).")) return;
+    const list: any[] = [];
+    for (const c of courses) for (const m of modes) list.push({ course: c, mode: m, duration: "", amount: FEE_FALLBACK[c][m] });
+    const r = await fetch("/api/admin/fees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fees: list }) });
+    if (r.ok) { load(); alert("Base fees reset to defaults"); }
+  };
+
+  if (loading) return <div className="text-sm text-slate-500">Loading fee config…</div>;
+
+  return (
+    <div className="grid gap-6">
+      <div className="card p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-navy-900">Fee Config • Per Course × Mode × Duration × Medium × Branch</h2>
+            <p className="text-xs text-slate-500 mt-1">Configurable — changes reflect instantly in admission form & student checkout. Only super_admin can save; finance can view.</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={resetFallback} className="px-4 py-2 rounded-full border border-slate-200 text-sm hover:bg-slate-50">Reset Base Defaults</button>
+            <button onClick={saveAll} disabled={saving} className="px-6 py-2.5 rounded-full bg-navy-900 text-white text-sm font-medium disabled:opacity-50 hover:bg-navy-800">{saving ? "Saving…" : "Save All →"}</button>
+          </div>
+        </div>
+        {saved && <div className="mt-3 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl text-center">✓ Saved! Admission form now uses new fees.</div>}
+
+        <div className="mt-4 flex gap-2 overflow-auto scrollbar-none pb-1">
+          <button
+            onClick={() => setDurKey("")}
+            className={`shrink-0 px-4 py-2 rounded-full border text-sm font-medium transition ${durKey === "" ? "bg-navy-900 text-white border-navy-900 shadow-sm" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+          >
+            Base (all durations)
+          </button>
+          {durations.map((d) => (
+            <button
+              key={d.id}
+              onClick={() => setDurKey(d.name)}
+              className={`shrink-0 px-4 py-2 rounded-full border text-sm font-medium transition ${durKey === d.name ? "bg-navy-900 text-white border-navy-900 shadow-sm" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+            >
+              {d.name}
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 grid gap-2">
+          <div className="flex gap-2 items-center overflow-auto scrollbar-none pb-1">
+            <span className="text-xs font-semibold text-slate-500 w-16 shrink-0">Medium</span>
+            <button
+              onClick={() => setMedKey("")}
+              className={`shrink-0 px-4 py-2 rounded-full border text-sm font-medium transition ${medKey === "" ? "bg-navy-900 text-white border-navy-900 shadow-sm" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+            >
+              Base (all mediums)
+            </button>
+            {mediums.map((m) => (
+              <button
+                key={m.id || m.name}
+                onClick={() => setMedKey(m.name)}
+                className={`shrink-0 px-4 py-2 rounded-full border text-sm font-medium transition ${medKey === m.name ? "bg-navy-900 text-white border-navy-900 shadow-sm" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+              >
+                {m.name}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2 items-center overflow-auto scrollbar-none pb-1">
+            <span className="text-xs font-semibold text-slate-500 w-16 shrink-0">Branch</span>
+            <button
+              onClick={() => setBrKey("")}
+              className={`shrink-0 px-4 py-2 rounded-full border text-sm font-medium transition ${brKey === "" ? "bg-navy-900 text-white border-navy-900 shadow-sm" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+            >
+              Base (all branches)
+            </button>
+            {branches.map((b) => (
+              <button
+                key={b.id || b.name}
+                onClick={() => setBrKey(b.name)}
+                className={`shrink-0 px-4 py-2 rounded-full border text-sm font-medium transition ${brKey === b.name ? "bg-navy-900 text-white border-navy-900 shadow-sm" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+              >
+                {b.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        {durKey === "" && medKey === "" && brKey === "" ? (
+          <div className="mt-2 text-xs text-slate-500">Editing <b>Base</b> fees — used everywhere unless overridden. Clearing a cell removes the row (hardcoded fallback applies). Add mediums/branches in Masters.</div>
+        ) : (
+          <div className="mt-2 text-xs text-slate-500">Editing overrides for <b>{[durKey || "all durations", medKey || "all mediums", brKey || "all branches"].join(" • ")}</b> — empty cells inherit the value shown as placeholder. Clearing a filled cell deletes the override.</div>
+        )}
+
+        <div className="mt-4 overflow-auto border border-slate-200 rounded-2xl">
+          <table className="w-full text-sm min-w-[640px]">
+            <thead className="bg-slate-50 text-xs text-slate-600">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold">Course</th>
+                {modes.map((m) => (
+                  <th key={m} className="text-center px-4 py-3 font-semibold">{m}<div className="font-normal text-slate-400">{m === "Residential" ? "+ Hostel" : m === "Online" ? "60% of Offline" : "Day-scholar"}</div></th>
+                ))}
+                <th className="text-center px-4 py-3 font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {courses.map((course) => (
+                <tr key={course} className="hover:bg-slate-50/50">
+                  <td className="px-4 py-3 font-medium text-navy-900">{course}</td>
+                  {modes.map((mode) => (
+                    <td key={mode} className="px-3 py-2">
+                      <div className="flex items-center gap-1 justify-center">
+                        <span className="text-slate-400 text-xs">₹</span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={getFee(course, mode)}
+                          onChange={(e) => setFee(course, mode, e.target.value)}
+                          placeholder={placeholderFor(course, mode)}
+                          className="w-28 px-3 py-2 rounded-xl border border-slate-200 text-sm text-center focus:outline-none focus:ring-2 focus:ring-sky-500"
+                        />
+                      </div>
+                    </td>
+                  ))}
+                  <td className="px-4 py-3 text-center">
+                    <span className="text-xs text-slate-500">
+                      {(() => {
+                        const r = Number(getFee(course, "Residential") || 0);
+                        const o = Number(getFee(course, "Offline") || 0);
+                        if (!r || !o) return "—";
+                        return `Diff: +₹${(r - o).toLocaleString("en-IN")}`;
+                      })()}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mt-4 grid sm:grid-cols-3 gap-3 text-xs">
+          <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-sky-800"><b>Residential:</b> Includes hostel + food + 24×7 study hall (Bollikunta 15 Acres).</div>
+          <div className="p-3 rounded-xl bg-slate-50 border text-slate-600"><b>Offline:</b> Day-scholar — Warangal / Hyderabad / Hanamkonda.</div>
+          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800"><b>Online:</b> Live + recorded, unlimited rewatch (typically 60% of Offline).</div>
+        </div>
+        <div className="mt-3 text-xs text-slate-500">Tip: Save All writes the whole visible grid — filled cells upsert, blank cells delete that row (inherited/hardcoded fallback then applies).</div>
+      </div>
+
+      <div className="card p-6">
+        <h3 className="font-semibold text-navy-900">How it works</h3>
+        <ul className="mt-2 grid gap-1 text-sm text-slate-600">
+          <li>• Admission form fetches <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">GET /api/fees</code> (public) — no auth, cached no-store.</li>
+          <li>• Lookup order per course + mode: exact (duration + medium + branch) → peel branch → peel medium → peel duration → Base → hardcoded fallback.</li>
+          <li>• Save All does <code className="px-1 py-0.5 bg-slate-100 rounded text-xs">POST /api/admin/fees {"{ fees: [...] }"}</code> upsert by (course, mode, duration, medium, branch); blanks delete that row.</li>
+          <li>• Changes reflect immediately — no redeploy needed.</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function ExpenseTrackerTab() {
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [filter, setFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
+  const [q, setQ] = useState("");
+  const [form, setForm] = useState({ title: "", category: "General", amount: "", paidBy: "", paymentMethod: "cash", expenseDate: new Date().toISOString().slice(0, 10), dueDate: new Date().toISOString().slice(0, 10), notes: "" });
+  const [role, setRole] = useState<string>("super_admin");
+  const load = () => fetch("/api/admin/expenses").then((r) => r.json()).then((d) => Array.isArray(d) && setExpenses(d)).catch(() => {});
+  useEffect(() => {
+    load();
+    fetch("/api/admin/login").then((r) => r.json()).then((d) => setRole(d.role || "super_admin")).catch(() => {});
+  }, []);
+  const isSuper = role === "super_admin";
+  const save = async () => {
+    if (!form.title.trim() || !form.amount) return alert("Expense and amount required");
+    const r = await fetch("/api/admin/expenses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: form.title, expense: form.title, category: form.category, amount: Number(form.amount), paidBy: form.paidBy, paymentMethod: form.paymentMethod, expenseDate: form.expenseDate, dueDate: form.dueDate, notes: form.notes }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) {
+      setForm({ title: "", category: "General", amount: "", paidBy: "", paymentMethod: "cash", expenseDate: new Date().toISOString().slice(0, 10), dueDate: new Date().toISOString().slice(0, 10), notes: "" });
+      load();
+      if (!isSuper) alert("Submitted for super_admin approval (pending)");
+    } else alert(d.error || "Failed");
+  };
+  const act = async (id: string, action: string) => {
+    const r = await fetch("/api/admin/expenses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action }) });
+    if (r.ok) load();
+    else alert("Failed");
+  };
+  const del = async (id: string) => {
+    if (!confirm("Delete expense?")) return;
+    await fetch(`/api/admin/expenses?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    load();
+  };
+  const filtered = expenses.filter((e) => {
+    const fOk = filter === "all" || e.status === filter;
+    const qOk = !q || `${e.title} ${e.paidBy || ""} ${e.notes || ""} ${e.category}`.toLowerCase().includes(q.toLowerCase());
+    return fOk && qOk;
+  });
+  const totals = {
+    pending: expenses.filter((e) => e.status === "pending").reduce((s, e) => s + Number(e.amount), 0),
+    approved: expenses.filter((e) => e.status === "approved").reduce((s, e) => s + Number(e.amount), 0),
+    paid: expenses.filter((e) => e.status === "paid").reduce((s, e) => s + Number(e.amount), 0),
+    total: expenses.reduce((s, e) => s + Number(e.amount), 0),
+  };
+  // AR/AP relation: Approved expenses count toward AP (payable), pending is awaiting approval
+  const apTotal = totals.approved + totals.paid;
+  const apPending = totals.pending;
+
+  return (
+    <div className="grid gap-6">
+      {/* AR/AP summary related */}
+      <div className="grid sm:grid-cols-4 gap-3">
+        <div className="card p-4"><div className="text-xs text-slate-500">Total Expenses</div><div className="text-xl font-bold text-navy-900">₹{totals.total.toLocaleString("en-IN")}</div><div className="text-xs text-slate-500">{expenses.length} records</div></div>
+        <div className="card p-4 border-amber-200 bg-amber-50"><div className="text-xs text-amber-700 font-semibold">Pending Approval</div><div className="text-xl font-bold text-amber-800">₹{totals.pending.toLocaleString("en-IN")}</div><div className="text-xs text-amber-700">{expenses.filter((e) => e.status === "pending").length} awaiting super_admin</div></div>
+        <div className="card p-4 border-emerald-200 bg-emerald-50"><div className="text-xs text-emerald-700 font-semibold">Approved (AP)</div><div className="text-xl font-bold text-emerald-800">₹{apTotal.toLocaleString("en-IN")}</div><div className="text-xs text-emerald-700">Counts toward Accounts Payable</div></div>
+        <div className="card p-4"><div className="text-xs text-slate-500">Rejected</div><div className="text-xl font-bold text-slate-700">₹{expenses.filter((e) => e.status === "rejected").reduce((s, e) => s + Number(e.amount), 0).toLocaleString("en-IN")}</div></div>
+      </div>
+
+      <div className="grid lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-7 card p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <h2 className="font-semibold text-navy-900">Expense Tracker • {expenses.length}</h2>
+            <div className="flex gap-2">
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search expense, paid by…" className="px-3 py-2 rounded-full border border-slate-200 text-sm w-32" />
+              <select value={filter} onChange={(e) => setFilter(e.target.value as any)} className="px-3 py-2 rounded-full border border-slate-200 text-sm bg-white">
+                <option value="all">All</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="paid">Paid</option>
+              </select>
+            </div>
+          </div>
+          <div className="mt-1 text-xs text-slate-500">Finance creates → <b>pending</b> → super_admin approves → counts in AR/AP • Super_admin auto-approved</div>
+
+          <div className="mt-4 overflow-auto border border-slate-200 rounded-2xl max-h-[60vh]">
+            <table className="w-full text-sm min-w-[760px]">
+              <thead className="bg-slate-50 text-xs text-slate-600 sticky top-0">
+                <tr>
+                  <th className="text-left px-3 py-2">Expense / Category</th>
+                  <th className="text-left px-3 py-2">Paid By</th>
+                  <th className="text-right px-3 py-2">Amount</th>
+                  <th className="text-center px-3 py-2">Via</th>
+                  <th className="text-center px-3 py-2">Date</th>
+                  <th className="text-center px-3 py-2">Status</th>
+                  <th className="text-center px-3 py-2">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.map((e) => (
+                  <tr key={e.id} className="hover:bg-slate-50">
+                    <td className="px-3 py-2">
+                      <div className="font-medium text-navy-900">{e.title}</div>
+                      <div className="text-xs text-slate-500">{e.category} • {e.notes ? e.notes.slice(0, 40) : ""} {e.requestedBy ? `• by ${e.requestedBy}` : ""}</div>
+                    </td>
+                    <td className="px-3 py-2 text-xs">{e.paidBy || e.vendor || "—"}</td>
+                    <td className="px-3 py-2 text-right font-bold">₹{Number(e.amount).toLocaleString("en-IN")}</td>
+                    <td className="px-3 py-2 text-center"><span className="px-2 py-1 rounded-full bg-slate-100 border text-xs capitalize">{e.paymentMethod || "cash"}</span></td>
+                    <td className="px-3 py-2 text-center text-xs">{e.expenseDate ? new Date(e.expenseDate).toLocaleDateString("en-IN") : new Date(e.dueDate).toLocaleDateString("en-IN")}</td>
+                    <td className="px-3 py-2 text-center"><span className={`px-2 py-1 rounded-full text-xs border capitalize ${e.status === "pending" ? "bg-amber-50 border-amber-200 text-amber-700" : e.status === "approved" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : e.status === "rejected" ? "bg-red-50 border-red-200 text-red-700" : "bg-slate-100 border-slate-200"}`}>{e.status}</span></td>
+                    <td className="px-3 py-2">
+                      <div className="flex gap-1 justify-center flex-wrap">
+                        {e.status === "pending" && isSuper ? (
+                          <>
+                            <button onClick={() => act(e.id, "approve")} className="px-2 py-1 rounded-full bg-emerald-600 text-white text-xs">Approve</button>
+                            <button onClick={() => act(e.id, "reject")} className="px-2 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs">Reject</button>
+                          </>
+                        ) : e.status === "approved" && isSuper ? (
+                          <button onClick={() => act(e.id, "markPaid")} className="px-2 py-1 rounded-full bg-navy-900 text-white text-xs">Mark Paid</button>
+                        ) : null}
+                        <button onClick={() => del(e.id)} className="px-2 py-1 rounded-full bg-white border text-xs">✕</button>
+                      </div>
+                      {e.approvedBy && <div className="text-[10px] text-slate-400 text-center mt-1">by {e.approvedBy}</div>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {filtered.length === 0 && <div className="p-8 text-center text-sm text-slate-500">No {filter} expenses</div>}
+          </div>
+          <div className="mt-3 text-xs text-slate-500">AR/AP: Only <b>approved/paid</b> counts toward Accounts Payable in Dashboard → Finance. Pending is separate.</div>
+        </div>
+
+        <div className="lg:col-span-5 card p-6 h-fit sticky top-[88px]">
+          <h3 className="font-semibold text-navy-900">Add Expense • Tracker</h3>
+          <p className="text-xs text-slate-500">Creates expense → {isSuper ? "auto-approved (super_admin)" : "pending for super_admin approval"} • Related to AR/AP.</p>
+          <div className="mt-4 grid gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-700">Expense *</label>
+              <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g., Mess Food - Aug, Rent, Printing" className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-700">Category</label>
+                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white">
+                  <option>General</option><option>Rent</option><option>Food</option><option>Faculty</option><option>Utilities</option><option>Marketing</option><option>Maintenance</option><option>Transport</option><option>Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-700">Amount *</label>
+                <input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="₹ amount" className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-700">Paid By *</label>
+                <input value={form.paidBy} onChange={(e) => setForm({ ...form, paidBy: e.target.value })} placeholder="e.g., Anwar Sir, Staff Name" className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-700">Paid Via</label>
+                <select value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value })} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white">
+                  <option value="cash">Cash</option><option value="UPI">UPI</option><option value="bank">Bank</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-700">Expense Date *</label>
+                <input type="date" value={form.expenseDate} onChange={(e) => setForm({ ...form, expenseDate: e.target.value })} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-700">Due Date (AP)</label>
+                <input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-700">Notes</label>
+              <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Free text — vendor, bill no, remarks…" rows={2} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+            </div>
+            <button onClick={save} className="btn-primary justify-center">{isSuper ? "Add & Approve →" : "Submit for Approval →"}</button>
+            <div className="text-xs text-slate-500 text-center">{isSuper ? "As super_admin, your expenses are auto-approved and counted in AP." : "Your expense will be pending until super_admin approves. It will then count toward AP."}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MastersTab() {
+  const [durations, setDurations] = useState<any[]>([]);
+  const [addons, setAddons] = useState<any[]>([]);
+  const [mediums, setMediums] = useState<any[]>([]);
+  const [branches, setBranches] = useState<any[]>([]);
+  const [dForm, setDForm] = useState({ id: "", name: "", months: "", active: true });
+  const [aForm, setAForm] = useState({ id: "", name: "", fee: "", courses: "", active: true });
+  const [mForm, setMForm] = useState({ id: "", name: "", active: true });
+  const [bForm, setBForm] = useState({ id: "", name: "", address: "", phone: "", active: true });
+  const load = () => {
+    fetch("/api/admin/durations").then((r) => r.json()).then((d) => Array.isArray(d) && setDurations(d)).catch(() => {});
+    fetch("/api/admin/addons").then((r) => r.json()).then((d) => Array.isArray(d) && setAddons(d)).catch(() => {});
+    fetch("/api/admin/mediums").then((r) => r.json()).then((d) => Array.isArray(d) && setMediums(d)).catch(() => {});
+    fetch("/api/admin/branches").then((r) => r.json()).then((d) => Array.isArray(d) && setBranches(d)).catch(() => {});
+  };
+  useEffect(() => { load(); }, []);
+  const saveD = async () => {
+    if (!dForm.name.trim() || !dForm.months) return alert("Name and months required");
+    const r = await fetch("/api/admin/durations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: dForm.id || undefined, name: dForm.name, months: Number(dForm.months), active: dForm.active }) });
+    if (r.ok) { setDForm({ id: "", name: "", months: "", active: true }); load(); } else alert("Failed (name must be unique)");
+  };
+  const saveA = async () => {
+    if (!aForm.name.trim() || aForm.fee === "") return alert("Name and fee required");
+    const r = await fetch("/api/admin/addons", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: aForm.id || undefined, name: aForm.name, fee: Number(aForm.fee), courses: aForm.courses, active: aForm.active }) });
+    if (r.ok) { setAForm({ id: "", name: "", fee: "", courses: "", active: true }); load(); } else alert("Failed");
+  };
+  const del = async (kind: "d" | "a" | "m" | "b", id: string) => {
+    if (!confirm("Delete?")) return;
+    const ep = kind === "d" ? "durations" : kind === "a" ? "addons" : kind === "m" ? "mediums" : "branches";
+    const r = await fetch(`/api/admin/${ep}?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      alert(d.error || "Delete failed");
+    }
+    load();
+  };
+  const saveM = async () => {
+    if (!mForm.name.trim()) return alert("Name required");
+    const r = await fetch("/api/admin/mediums", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: mForm.id || undefined, name: mForm.name, active: mForm.active }) });
+    if (r.ok) { setMForm({ id: "", name: "", active: true }); load(); } else alert("Failed (name must be unique)");
+  };
+  const saveB = async () => {
+    if (!bForm.name.trim() || !bForm.address.trim()) return alert("Name and address required");
+    const r = await fetch("/api/admin/branches", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: bForm.id || undefined, name: bForm.name, address: bForm.address, phone: bForm.phone, active: bForm.active }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) { setBForm({ id: "", name: "", address: "", phone: "", active: true }); load(); } else alert(d.error || "Failed (name must be unique)");
+  };
+  return (
+    <div className="grid lg:grid-cols-2 gap-6">
+      <div className="card p-6">
+        <h2 className="font-semibold text-navy-900">Durations • {durations.length}</h2>
+        <p className="text-xs text-slate-500">Drives registration duration dropdown, batch end dates & course end dates.</p>
+        <div className="mt-4 grid gap-2">
+          {durations.map((d) => (
+            <div key={d.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-200">
+              <div><div className="text-sm font-medium">{d.name} <span className="text-xs text-slate-500">• {d.months} months</span></div></div>
+              <div className="flex gap-1 items-center">
+                <span className={`text-xs px-2 py-1 rounded-full border ${d.active ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-slate-100 border-slate-200"}`}>{d.active ? "active" : "off"}</span>
+                <button onClick={() => setDForm({ id: d.id, name: d.name, months: String(d.months), active: d.active })} className="px-2 py-1 rounded-full bg-white border text-xs">Edit</button>
+                <button onClick={() => del("d", d.id)} className="px-2 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs">✕</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 grid gap-2 p-3 rounded-xl bg-slate-50 border">
+          <input value={dForm.name} onChange={(e) => setDForm({ ...dForm, name: e.target.value })} placeholder="Name (e.g., 1 Year)" className="px-3 py-2 rounded-xl border text-sm bg-white" />
+          <div className="flex gap-2">
+            <input type="number" min={1} value={dForm.months} onChange={(e) => setDForm({ ...dForm, months: e.target.value })} placeholder="Months" className="flex-1 px-3 py-2 rounded-xl border text-sm bg-white" />
+            <label className="flex items-center gap-1 text-xs px-2"><input type="checkbox" checked={dForm.active} onChange={(e) => setDForm({ ...dForm, active: e.target.checked })} /> Active</label>
+            <button onClick={saveD} className="px-4 py-2 rounded-full bg-navy-900 text-white text-xs">{dForm.id ? "Update" : "Add"}</button>
+            {dForm.id && <button onClick={() => setDForm({ id: "", name: "", months: "", active: true })} className="text-xs text-slate-500">Clear</button>}
+          </div>
+        </div>
+      </div>
+      <div className="card p-6">
+        <h2 className="font-semibold text-navy-900">Add-ons • {addons.length}</h2>
+        <p className="text-xs text-slate-500">Offered at registration per course (blank courses = all). Fees snapshot at submit.</p>
+        <div className="mt-4 grid gap-2 max-h-[50vh] overflow-auto pr-1">
+          {addons.map((a) => (
+            <div key={a.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-200">
+              <div><div className="text-sm font-medium">{a.name} <span className="font-bold">₹{Number(a.fee).toLocaleString("en-IN")}</span></div><div className="text-xs text-slate-500">{a.courses?.length ? a.courses.join(", ") : "All courses"}</div></div>
+              <div className="flex gap-1 items-center">
+                <span className={`text-xs px-2 py-1 rounded-full border ${a.active ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-slate-100 border-slate-200"}`}>{a.active ? "active" : "off"}</span>
+                <button onClick={() => setAForm({ id: a.id, name: a.name, fee: String(a.fee), courses: (a.courses || []).join(", "), active: a.active })} className="px-2 py-1 rounded-full bg-white border text-xs">Edit</button>
+                <button onClick={() => del("a", a.id)} className="px-2 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs">✕</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 grid gap-2 p-3 rounded-xl bg-slate-50 border">
+          <input value={aForm.name} onChange={(e) => setAForm({ ...aForm, name: e.target.value })} placeholder="Add-on name (e.g., Hostel Upgrade)" className="px-3 py-2 rounded-xl border text-sm bg-white" />
+          <div className="flex gap-2">
+            <input type="number" min={0} value={aForm.fee} onChange={(e) => setAForm({ ...aForm, fee: e.target.value })} placeholder="Fee ₹" className="flex-1 px-3 py-2 rounded-xl border text-sm bg-white" />
+            <input value={aForm.courses} onChange={(e) => setAForm({ ...aForm, courses: e.target.value })} placeholder="Courses (blank=all)" className="flex-1 px-3 py-2 rounded-xl border text-sm bg-white" />
+          </div>
+          <div className="flex gap-2 items-center">
+            <label className="flex items-center gap-1 text-xs px-2"><input type="checkbox" checked={aForm.active} onChange={(e) => setAForm({ ...aForm, active: e.target.checked })} /> Active</label>
+            <button onClick={saveA} className="px-4 py-2 rounded-full bg-navy-900 text-white text-xs">{aForm.id ? "Update" : "Add"}</button>
+            {aForm.id && <button onClick={() => setAForm({ id: "", name: "", fee: "", courses: "", active: true })} className="text-xs text-slate-500">Clear</button>}
+          </div>
+        </div>
+      </div>
+      <div className="card p-6">
+        <h2 className="font-semibold text-navy-900">Mediums • {mediums.length}</h2>
+        <p className="text-xs text-slate-500">Language options for registration & fee config. Inactive ones are hidden from forms.</p>
+        <div className="mt-4 grid gap-2">
+          {mediums.map((m) => (
+            <div key={m.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-200">
+              <div className="text-sm font-medium">{m.name}</div>
+              <div className="flex gap-1 items-center">
+                <span className={`text-xs px-2 py-1 rounded-full border ${m.active ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-slate-100 border-slate-200"}`}>{m.active ? "active" : "off"}</span>
+                <button onClick={() => setMForm({ id: m.id, name: m.name, active: m.active })} className="px-2 py-1 rounded-full bg-white border text-xs">Edit</button>
+                <button onClick={() => del("m", m.id)} className="px-2 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs">✕</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 grid gap-2 p-3 rounded-xl bg-slate-50 border">
+          <input value={mForm.name} onChange={(e) => setMForm({ ...mForm, name: e.target.value })} placeholder="Name (e.g., Hindi)" className="px-3 py-2 rounded-xl border text-sm bg-white" />
+          <div className="flex gap-2 items-center">
+            <label className="flex items-center gap-1 text-xs px-2"><input type="checkbox" checked={mForm.active} onChange={(e) => setMForm({ ...mForm, active: e.target.checked })} /> Active</label>
+            <button onClick={saveM} className="px-4 py-2 rounded-full bg-navy-900 text-white text-xs">{mForm.id ? "Update" : "Add"}</button>
+            {mForm.id && <button onClick={() => setMForm({ id: "", name: "", active: true })} className="text-xs text-slate-500">Clear</button>}
+          </div>
+        </div>
+      </div>
+      <div className="card p-6">
+        <h2 className="font-semibold text-navy-900">Branches • {branches.length}</h2>
+        <p className="text-xs text-slate-500">Branch options for registration, batches & fee config. Inactive ones are hidden from forms.</p>
+        <div className="mt-4 grid gap-2 max-h-[50vh] overflow-auto pr-1">
+          {branches.map((b) => (
+            <div key={b.id} className="p-3 rounded-xl border border-slate-200">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-medium">{b.name}</div>
+                <div className="flex gap-1 items-center shrink-0">
+                  <span className={`text-xs px-2 py-1 rounded-full border ${b.active ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-slate-100 border-slate-200"}`}>{b.active ? "active" : "off"}</span>
+                  <button onClick={() => setBForm({ id: b.id, name: b.name, address: b.address, phone: b.phone || "", active: b.active })} className="px-2 py-1 rounded-full bg-white border text-xs">Edit</button>
+                  <button onClick={() => del("b", b.id)} className="px-2 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs">✕</button>
+                </div>
+              </div>
+              <div className="text-xs text-slate-500 mt-1">{b.address}{b.phone ? ` • ${b.phone}` : ""}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 grid gap-2 p-3 rounded-xl bg-slate-50 border">
+          <input value={bForm.name} onChange={(e) => setBForm({ ...bForm, name: e.target.value })} placeholder="Branch name (e.g., Warangal)" className="px-3 py-2 rounded-xl border text-sm bg-white" />
+          <input value={bForm.address} onChange={(e) => setBForm({ ...bForm, address: e.target.value })} placeholder="Full address" className="px-3 py-2 rounded-xl border text-sm bg-white" />
+          <input value={bForm.phone} onChange={(e) => setBForm({ ...bForm, phone: e.target.value })} placeholder="Phone (optional)" className="px-3 py-2 rounded-xl border text-sm bg-white" />
+          <div className="flex gap-2 items-center">
+            <label className="flex items-center gap-1 text-xs px-2"><input type="checkbox" checked={bForm.active} onChange={(e) => setBForm({ ...bForm, active: e.target.checked })} /> Active</label>
+            <button onClick={saveB} className="px-4 py-2 rounded-full bg-navy-900 text-white text-xs">{bForm.id ? "Update" : "Add"}</button>
+            {bForm.id && <button onClick={() => setBForm({ id: "", name: "", address: "", phone: "", active: true })} className="text-xs text-slate-500">Clear</button>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DuesTab() {
+  const [view, setView] = useState<"queue" | "workspace" | "dues" | "receipts">("queue");
+  const [queue, setQueue] = useState<any[]>([]);
+  const [admissions, setAdmissions] = useState<any[]>([]);
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState<any>(null);
+  const [installments, setInstallments] = useState<any[]>([]);
+  const [admPayments, setAdmPayments] = useState<any[]>([]);
+  const [receipts, setReceipts] = useState<any[]>([]);
+  const [auditTrail, setAuditTrail] = useState<any[]>([]);
+  const [duesRows, setDuesRows] = useState<any[]>([]);
+  const [allReceipts, setAllReceipts] = useState<any[]>([]);
+  const [showReceipt, setShowReceipt] = useState<any>(null);
+  const [ackFor, setAckFor] = useState<string | null>(null);
+  const [allocRows, setAllocRows] = useState<{ installmentId: string; amount: string }[]>([{ installmentId: "", amount: "" }]);
+  const [newInst, setNewInst] = useState({ label: "", amount: "", dueDate: "", notes: "" });
+  const [dueEdit, setDueEdit] = useState<Record<string, { date: string; reason: string }>>({});
+  const [dueHist, setDueHist] = useState<Record<string, any[]>>({});
+  const [f, setF] = useState({ due: "all", status: "all", branch: "", course: "", batch: "", from: "", to: "", q: "" });
+
+  const loadQueue = () =>
+    Promise.all([
+      fetch("/api/admin/fee-payments?status=submitted", { cache: "no-store" }).then((r) => r.json()).catch(() => []),
+      fetch("/api/admin/fee-payments?status=pending_verification", { cache: "no-store" }).then((r) => r.json()).catch(() => []),
+    ]).then(([a, b]) => setQueue([...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])]));
+  const loadAdmissions = () => fetch("/api/admin/admissions").then((r) => r.json()).then((d) => Array.isArray(d) && setAdmissions(d)).catch(() => {});
+  useEffect(() => { loadQueue(); loadAdmissions(); }, []);
+
+  const openWorkspace = async (a: any) => {
+    setSel(a);
+    setView("workspace");
+    const [inst, pays, recs, aud] = await Promise.all([
+      fetch(`/api/admin/installments?admissionId=${a.id}`, { cache: "no-store" }).then((r) => r.json()).catch(() => []),
+      fetch(`/api/admin/fee-payments?admissionId=${a.id}`, { cache: "no-store" }).then((r) => r.json()).catch(() => []),
+      fetch(`/api/admin/receipts?admissionId=${a.id}`, { cache: "no-store" }).then((r) => r.json()).catch(() => []),
+      fetch(`/api/admin/audit?entity=admission&entityId=${a.id}`, { cache: "no-store" }).then((r) => r.json()).catch(() => []),
+    ]);
+    setInstallments(Array.isArray(inst) ? inst : []);
+    setAdmPayments(Array.isArray(pays) ? pays : []);
+    setReceipts(Array.isArray(recs) ? recs : []);
+    setAuditTrail(Array.isArray(aud) ? aud : []);
+  };
+  const refreshWorkspace = () => sel && openWorkspace(sel);
+
+  const loadDues = async () => {
+    const p = new URLSearchParams({ due: f.due, status: f.status, branch: f.branch, course: f.course, batch: f.batch, from: f.from, to: f.to, q: f.q });
+    const r = await fetch(`/api/admin/dues?${p.toString()}`, { cache: "no-store" });
+    const d = await r.json().catch(() => []);
+    if (Array.isArray(d)) setDuesRows(d);
+  };
+  const loadReceipts = async () => {
+    const r = await fetch("/api/admin/receipts", { cache: "no-store" });
+    const d = await r.json().catch(() => []);
+    if (Array.isArray(d)) setAllReceipts(d);
+  };
+
+  const acknowledge = async (payId: string) => {
+    const rows = allocRows.filter((r) => r.installmentId && Number(r.amount) > 0).map((r) => ({ installmentId: r.installmentId, amount: Number(r.amount) }));
+    if (rows.length === 0) return alert("Add at least one allocation row");
+    const r = await fetch("/api/admin/fee-payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: payId, action: "acknowledge", allocations: rows }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) { alert(`Acknowledged — Receipt ${d.receiptNo}`); setAckFor(null); setAllocRows([{ installmentId: "", amount: "" }]); loadQueue(); refreshWorkspace(); }
+    else alert(d.error || "Failed");
+  };
+  const rejectPay = async (payId: string) => {
+    const note = prompt("Rejection reason (recorded, balance unaffected):") || "";
+    const r = await fetch("/api/admin/fee-payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: payId, action: "reject", note }) });
+    if (r.ok) { loadQueue(); refreshWorkspace(); } else alert("Failed");
+  };
+  const autoOldest = (payAmount: number) => {
+    const sorted = [...installments].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+    let left = payAmount;
+    const rows: { installmentId: string; amount: string }[] = [];
+    for (const i of sorted) {
+      if (left <= 0) break;
+      const room = Math.max(0, i.originalAmount - (i.paidAmount || 0));
+      if (room <= 0) continue;
+      const take = Math.min(room, left);
+      rows.push({ installmentId: i.id, amount: String(take) });
+      left -= take;
+    }
+    setAllocRows(rows.length ? rows : [{ installmentId: "", amount: "" }]);
+  };
+
+  const addInst = async () => {
+    if (!sel || !newInst.amount || !newInst.dueDate) return alert("Amount and due date required");
+    const r = await fetch("/api/admin/installments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ admissionId: sel.id, label: newInst.label, amount: Number(newInst.amount), dueDate: newInst.dueDate, notes: newInst.notes }) });
+    if (r.ok) { setNewInst({ label: "", amount: "", dueDate: "", notes: "" }); refreshWorkspace(); } else alert("Failed");
+  };
+  const saveDue = async (instId: string) => {
+    const e = dueEdit[instId];
+    if (!e?.date) return alert("New due date required");
+    const r = await fetch("/api/admin/installments", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: instId, dueDate: e.date, reason: e.reason }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) { setDueEdit({ ...dueEdit, [instId]: { date: "", reason: "" } }); refreshWorkspace(); }
+    else alert(d.error || "Failed");
+  };
+  const showHist = async (instId: string) => {
+    if (dueHist[instId]) { const n = { ...dueHist }; delete n[instId]; setDueHist(n); return; }
+    const r = await fetch(`/api/admin/audit?entity=installment&entityId=${instId}`, { cache: "no-store" });
+    const d = await r.json().catch(() => []);
+    setDueHist({ ...dueHist, [instId]: Array.isArray(d) ? d : [] });
+  };
+  const delInst = async (id: string) => {
+    if (!confirm("Delete installment? Only allowed when nothing is paid/allocated.")) return;
+    const r = await fetch(`/api/admin/installments?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) refreshWorkspace(); else alert(d.error || "Failed");
+  };
+
+  const filteredAdm = admissions.filter((a) => {
+    if (!q) return a.status === "approved";
+    return `${a.name} ${a.email} ${a.applicationId || ""} ${a.applicantStudentId || ""}`.toLowerCase().includes(q.toLowerCase());
+  }).slice(0, 20);
+
+  const allocTotal = allocRows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
+  return (
+    <div className="grid gap-4">
+      <div className="card p-4 flex gap-2 flex-wrap">
+        {([["queue", "Verify Queue"], ["workspace", "Student Workspace"], ["dues", "Due Payments"], ["receipts", "Receipts"]] as const).map(([v, l]) => (
+          <button key={v} onClick={() => { setView(v); if (v === "receipts") loadReceipts(); }} className={`px-4 py-2 rounded-full text-sm font-medium border ${view === v ? "bg-navy-900 text-white border-navy-900" : "bg-white border-slate-200"}`}>{l}{v === "queue" && queue.length > 0 ? ` (${queue.length})` : ""}</button>
+        ))}
+      </div>
+
+      {view === "queue" && (
+        <div className="card p-6">
+          <h2 className="font-semibold text-navy-900">Payments Awaiting Acknowledgement • {queue.length}</h2>
+          <p className="text-xs text-slate-500">Submitted / provider-paid. Acknowledge → allocate → receipt. Rejected payments never reduce outstanding.</p>
+          <div className="mt-4 grid gap-3">
+            {queue.map((p) => (
+              <div key={p.id} className="p-4 rounded-2xl border border-slate-200">
+                <div className="flex justify-between flex-wrap gap-2">
+                  <div>
+                    <div className="text-sm font-semibold">₹{Number(p.amount).toLocaleString("en-IN")} <span className="capitalize font-normal text-slate-500">• {p.method}</span> <span className={`ml-1 text-xs px-2 py-0.5 rounded-full border ${p.status === "pending_verification" ? "bg-sky-50 border-sky-200 text-sky-700" : "bg-amber-50 border-amber-200 text-amber-700"}`}>{p.status.replace(/_/g, " ")}</span></div>
+                    <div className="text-xs text-slate-500 mt-1">{p.transactionId ? `Ref: ${p.transactionId} • ` : ""}{new Date(p.createdAt).toLocaleString("en-IN")} • by {p.recordedBy || "—"}</div>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => { setAckFor(ackFor === p.id ? null : p.id); setAllocRows([{ installmentId: "", amount: "" }]); }} className="px-3 py-1.5 rounded-full bg-emerald-600 text-white text-xs">Acknowledge + Allocate</button>
+                    <button onClick={() => rejectPay(p.id)} className="px-3 py-1.5 rounded-full bg-white border text-xs">Reject</button>
+                  </div>
+                </div>
+                {ackFor === p.id && (
+                  <div className="mt-3 p-3 rounded-xl bg-slate-50 border grid gap-2">
+                    <div className="text-xs font-semibold">Allocate exactly ₹{Number(p.amount).toLocaleString("en-IN")} (explicit or oldest-first)</div>
+                    <InstallmentOptions admissionId={p.admissionId} />
+                    {allocRows.map((row, i) => (
+                      <div key={i} className="flex gap-2">
+                        <AllocSelect admissionId={p.admissionId} value={row.installmentId} onChange={(v: string) => setAllocRows(allocRows.map((r, j) => (j === i ? { ...r, installmentId: v } : r)))} />
+                        <input type="number" min={0} value={row.amount} onChange={(e) => setAllocRows(allocRows.map((r, j) => (j === i ? { ...r, amount: e.target.value } : r)))} placeholder="₹" className="w-28 px-2 py-1.5 rounded-lg border text-xs bg-white" />
+                        <button onClick={() => setAllocRows(allocRows.filter((_, j) => j !== i))} className="text-xs text-red-600">✕</button>
+                      </div>
+                    ))}
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <button onClick={() => setAllocRows([...allocRows, { installmentId: "", amount: "" }])} className="text-xs px-3 py-1.5 rounded-full bg-white border">+ Split row</button>
+                      <button onClick={() => autoOldest(p.amount)} className="text-xs px-3 py-1.5 rounded-full bg-white border">Auto: oldest-first</button>
+                      <span className={`text-xs font-semibold ${allocTotal === p.amount ? "text-emerald-700" : "text-red-600"}`}>Total ₹{allocTotal.toLocaleString("en-IN")} / ₹{Number(p.amount).toLocaleString("en-IN")}</span>
+                      <button onClick={() => acknowledge(p.id)} disabled={allocTotal !== p.amount} className="ml-auto px-4 py-1.5 rounded-full bg-navy-900 text-white text-xs disabled:opacity-40">Confirm → Receipt</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+            {queue.length === 0 && <div className="text-sm text-slate-500 text-center py-6">Nothing awaiting verification ✓</div>}
+          </div>
+        </div>
+      )}
+
+      {view === "workspace" && (
+        <div className="grid gap-4">
+          <div className="card p-5">
+            <div className="font-semibold text-navy-900">Find student admission</div>
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, email, Application ID, Student ID…" className="mt-2 w-full px-3 py-2.5 rounded-xl border text-sm" />
+            <div className="mt-2 grid gap-1 max-h-48 overflow-auto">
+              {filteredAdm.map((a) => (
+                <button key={a.id} onClick={() => openWorkspace(a)} className={`text-left px-3 py-2 rounded-xl border text-sm ${sel?.id === a.id ? "bg-navy-900 text-white border-navy-900" : "bg-white hover:bg-slate-50"}`}>
+                  <b>{a.name}</b> • {a.applicationId || a.id} {a.applicantStudentId ? `• ${a.applicantStudentId}` : ""} • {a.course}
+                </button>
+              ))}
+              {filteredAdm.length === 0 && <div className="text-xs text-slate-400">Type to search approved admissions (default shows approved).</div>}
+            </div>
+          </div>
+
+          {sel && (
+            <>
+              <div className="card p-5">
+                <div className="flex justify-between flex-wrap gap-2">
+                  <div>
+                    <div className="font-semibold text-navy-900">{sel.name} • {sel.course}</div>
+                    <div className="text-xs text-slate-500">{sel.applicationId} {sel.applicantStudentId ? `• ${sel.applicantStudentId}` : ""} • {sel.branch} • {sel.batchName || ""}</div>
+                    <div className="text-xs text-slate-500">Start {sel.admissionStartDate ? new Date(sel.admissionStartDate).toLocaleDateString("en-IN") : "—"} → End {sel.courseEndDate ? new Date(sel.courseEndDate).toLocaleDateString("en-IN") : "—"} • Final fee ₹{Number(sel.finalFee ?? sel.totalFee ?? 0).toLocaleString("en-IN")}{sel.feeLocked ? " (locked)" : ""}</div>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <div className="text-xs font-bold tracking-widest text-slate-500">PAYMENT SCHEDULE</div>
+                  <div className="mt-2 grid gap-2">
+                    {installments.map((i) => (
+                      <div key={i.id} className="p-3 rounded-xl border border-slate-200">
+                        <div className="flex justify-between flex-wrap gap-2 text-sm">
+                          <b>{i.label}</b>
+                          <span>₹{Number(i.originalAmount).toLocaleString("en-IN")} • Paid ₹{Number(i.paidAmount || 0).toLocaleString("en-IN")} • Due ₹{Number(i.outstanding).toLocaleString("en-IN")}</span>
+                        </div>
+                        <div className="mt-1 flex gap-2 items-center flex-wrap text-xs">
+                          <span className={`px-2 py-0.5 rounded-full border ${i.status === "paid" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : i.status === "partial" ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-slate-100 border-slate-200"}`}>{i.status}</span>
+                          <span className="px-2 py-0.5 rounded-full border">{i.dueStatus} • {new Date(i.dueDate).toLocaleDateString("en-IN")}</span>
+                          <button onClick={() => showHist(i.id)} className="text-sky-700 hover:underline">due history</button>
+                          <button onClick={() => delInst(i.id)} className="text-red-600 hover:underline">delete</button>
+                        </div>
+                        <div className="mt-2 flex gap-2 flex-wrap">
+                          <input type="date" value={dueEdit[i.id]?.date || ""} onChange={(e) => setDueEdit({ ...dueEdit, [i.id]: { ...(dueEdit[i.id] || { date: "", reason: "" }), date: e.target.value } })} className="px-2 py-1.5 rounded-lg border text-xs" />
+                          <input value={dueEdit[i.id]?.reason || ""} onChange={(e) => setDueEdit({ ...dueEdit, [i.id]: { ...(dueEdit[i.id] || { date: "", reason: "" }), reason: e.target.value } })} placeholder="Reason (kept in history)" className="flex-1 min-w-[160px] px-2 py-1.5 rounded-lg border text-xs" />
+                          <button onClick={() => saveDue(i.id)} className="px-3 py-1.5 rounded-full bg-navy-900 text-white text-xs">Update due date</button>
+                        </div>
+                        {dueHist[i.id] && (
+                          <div className="mt-2 grid gap-1">
+                            {dueHist[i.id].filter((h: any) => h.action === "due_date_changed").map((h: any) => (
+                              <div key={h.id} className="text-xs text-slate-500">• {h.note} — by {h.actor}, {new Date(h.createdAt).toLocaleString("en-IN")}</div>
+                            ))}
+                            {dueHist[i.id].length === 0 && <div className="text-xs text-slate-400">No changes yet.</div>}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {installments.length === 0 && <div className="text-xs text-slate-400">No installments — add the first below.</div>}
+                  </div>
+                  <div className="mt-3 p-3 rounded-xl bg-slate-50 border grid sm:grid-cols-4 gap-2">
+                    <input value={newInst.label} onChange={(e) => setNewInst({ ...newInst, label: e.target.value })} placeholder={`Installment ${installments.length + 1}`} className="px-2 py-2 rounded-lg border text-xs bg-white" />
+                    <input type="number" value={newInst.amount} onChange={(e) => setNewInst({ ...newInst, amount: e.target.value })} placeholder="Amount ₹" className="px-2 py-2 rounded-lg border text-xs bg-white" />
+                    <input type="date" value={newInst.dueDate} onChange={(e) => setNewInst({ ...newInst, dueDate: e.target.value })} className="px-2 py-2 rounded-lg border text-xs bg-white" />
+                    <button onClick={addInst} className="px-3 py-2 rounded-full bg-navy-900 text-white text-xs">+ Add</button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card p-5">
+                <div className="text-xs font-bold tracking-widest text-slate-500">PAYMENTS ({admPayments.length})</div>
+                <div className="mt-2 grid gap-2">
+                  {admPayments.map((p) => (
+                    <div key={p.id} className="text-xs p-2.5 rounded-xl border flex flex-wrap gap-x-3 gap-y-1 items-center">
+                      <b>₹{Number(p.amount).toLocaleString("en-IN")}</b>
+                      <span className="capitalize">{p.method}</span>
+                      <span className={`px-2 py-0.5 rounded-full border ${p.status === "acknowledged" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : p.status === "rejected" || p.status === "failed" ? "bg-red-50 border-red-200 text-red-700" : "bg-amber-50 border-amber-200 text-amber-700"}`}>{p.status.replace(/_/g, " ")}</span>
+                      {p.transactionId && <span className="text-slate-500">{p.transactionId}</span>}
+                      {p.receiptNo && <span className="font-semibold">{p.receiptNo}</span>}
+                      <span className="text-slate-400">{new Date(p.createdAt).toLocaleString("en-IN")}</span>
+                    </div>
+                  ))}
+                  {admPayments.length === 0 && <div className="text-xs text-slate-400">No payments yet.</div>}
+                </div>
+              </div>
+
+              <div className="card p-5">
+                <div className="text-xs font-bold tracking-widest text-slate-500">RECEIPTS ({receipts.length})</div>
+                <div className="mt-2 grid gap-2">
+                  {receipts.map((r: any) => (
+                    <div key={r.id} className="flex justify-between items-center text-sm p-2.5 rounded-xl border">
+                      <span><b>{r.receiptNo}</b> • ₹{Number(r.amount).toLocaleString("en-IN")} • {new Date(r.createdAt).toLocaleDateString("en-IN")}</span>
+                      <button onClick={() => setShowReceipt(r)} className="text-xs text-sky-700 hover:underline">View / Print</button>
+                    </div>
+                  ))}
+                  {receipts.length === 0 && <div className="text-xs text-slate-400">No receipts — generated on acknowledgement.</div>}
+                </div>
+              </div>
+
+              <div className="card p-5">
+                <div className="text-xs font-bold tracking-widest text-slate-500">AUDIT TRAIL</div>
+                <div className="mt-2 grid gap-1.5 max-h-56 overflow-auto">
+                  {auditTrail.map((h: any) => (
+                    <div key={h.id} className="text-xs p-2 rounded-lg bg-slate-50 border"><b>{h.action.replace(/_/g, " ")}</b> • by {h.actor} • {new Date(h.createdAt).toLocaleString("en-IN")}{h.note && <div className="text-slate-600">{h.note}</div>}</div>
+                  ))}
+                  {auditTrail.length === 0 && <div className="text-xs text-slate-400">No audit entries.</div>}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {view === "dues" && (
+        <div className="card p-5">
+          <h2 className="font-semibold text-navy-900">Due Payments</h2>
+          <div className="mt-3 grid sm:grid-cols-4 gap-2 text-xs">
+            <select value={f.due} onChange={(e) => setF({ ...f, due: e.target.value })} className="px-2 py-2 rounded-lg border bg-white"><option value="all">All due states</option><option value="today">Due Today</option><option value="soon">Due Soon</option><option value="overdue">Overdue</option><option value="notdue">Not Due</option></select>
+            <select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })} className="px-2 py-2 rounded-lg border bg-white"><option value="all">All payment states</option><option value="pending">Pending</option><option value="partial">Partially Paid</option><option value="paid">Paid</option></select>
+            <select value={f.branch} onChange={(e) => setF({ ...f, branch: e.target.value })} className="px-2 py-2 rounded-lg border bg-white"><option value="">All branches</option><option>Warangal</option><option>Hyderabad</option><option>Hanamkonda</option><option>Bollikunta (Residential)</option></select>
+            <select value={f.course} onChange={(e) => setF({ ...f, course: e.target.value })} className="px-2 py-2 rounded-lg border bg-white"><option value="">All courses</option><option>SI</option><option>Constable</option><option>Groups</option><option>SSC GD</option><option>Defence</option><option>Army</option><option>UPSC</option></select>
+            <input value={f.batch} onChange={(e) => setF({ ...f, batch: e.target.value })} placeholder="Batch name filter" className="px-2 py-2 rounded-lg border bg-white" />
+            <input type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} className="px-2 py-2 rounded-lg border bg-white" />
+            <input type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} className="px-2 py-2 rounded-lg border bg-white" />
+            <input value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} placeholder="Search name, phone, IDs…" className="px-2 py-2 rounded-lg border bg-white" />
+          </div>
+          <button onClick={loadDues} className="mt-3 px-5 py-2 rounded-full bg-navy-900 text-white text-xs">Apply Filters →</button>
+          <div className="mt-4 overflow-auto border rounded-2xl max-h-[60vh]">
+            <table className="w-full text-xs min-w-[900px]">
+              <thead className="bg-slate-50 sticky top-0"><tr className="text-left text-slate-500"><th className="px-3 py-2">Student</th><th className="px-3 py-2">IDs</th><th className="px-3 py-2">Course/Branch/Batch</th><th className="px-3 py-2">Installment</th><th className="px-3 py-2 text-right">Original</th><th className="px-3 py-2 text-right">Paid</th><th className="px-3 py-2 text-right">Outstanding</th><th className="px-3 py-2">Due</th><th className="px-3 py-2">Status</th></tr></thead>
+              <tbody className="divide-y">
+                {duesRows.map((r: any) => (
+                  <tr key={r.installment.id} className="hover:bg-slate-50">
+                    <td className="px-3 py-2"><b>{r.student.name}</b><div className="text-slate-500">{r.student.phone}</div></td>
+                    <td className="px-3 py-2">{r.admission.studentId || "—"}<div className="text-slate-500">{r.admission.applicationId || ""}</div></td>
+                    <td className="px-3 py-2">{r.admission.course} • {r.admission.branch}<div className="text-slate-500">{r.admission.batchName || ""}</div></td>
+                    <td className="px-3 py-2">{r.installment.label}</td>
+                    <td className="px-3 py-2 text-right">₹{Number(r.installment.originalAmount).toLocaleString("en-IN")}</td>
+                    <td className="px-3 py-2 text-right">₹{Number(r.installment.paidAmount || 0).toLocaleString("en-IN")}</td>
+                    <td className="px-3 py-2 text-right font-bold">₹{Number(r.installment.outstanding).toLocaleString("en-IN")}</td>
+                    <td className="px-3 py-2">{new Date(r.installment.dueDate).toLocaleDateString("en-IN")}<div>{r.installment.dueStatus}</div></td>
+                    <td className="px-3 py-2">{r.installment.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {duesRows.length === 0 && <div className="p-8 text-center text-xs text-slate-400">Apply filters to load dues.</div>}
+          </div>
+        </div>
+      )}
+
+      {view === "receipts" && (
+        <div className="card p-5">
+          <h2 className="font-semibold text-navy-900">Receipts • {allReceipts.length}</h2>
+          <div className="mt-3 grid gap-2">
+            {allReceipts.map((r: any) => (
+              <div key={r.id} className="flex justify-between items-center text-sm p-3 rounded-xl border">
+                <span><b>{r.receiptNo}</b> • ₹{Number(r.amount).toLocaleString("en-IN")} • {new Date(r.createdAt).toLocaleString("en-IN")} • {r.feePayment?.allocations?.map((a: any) => a.installment?.label).filter(Boolean).join(", ")}</span>
+                <button onClick={() => setShowReceipt(r)} className="text-xs text-sky-700 hover:underline">View / Print</button>
+              </div>
+            ))}
+            {allReceipts.length === 0 && <div className="text-xs text-slate-400">No receipts yet — generated when payments are acknowledged.</div>}
+          </div>
+        </div>
+      )}
+
+      {showReceipt && (
+        <ReceiptModal receiptNo={showReceipt.receiptNo} onClose={() => setShowReceipt(null)} />
+      )}
+    </div>
+  );
+}
+
+function InstallmentOptions({ admissionId }: { admissionId: string }) {
+  const [list, setList] = useState<any[]>([]);
+  useEffect(() => {
+    fetch(`/api/admin/installments?admissionId=${encodeURIComponent(admissionId)}`, { cache: "no-store" })
+      .then((r) => r.json()).then((d) => Array.isArray(d) && setList(d)).catch(() => {});
+  }, [admissionId]);
+  if (list.length === 0) return <div className="text-xs text-red-600">No installments for this admission — create a schedule first (Workspace).</div>;
+  return (
+    <div className="text-xs text-slate-600">
+      Open: {list.filter((i) => i.status !== "paid").map((i) => `${i.label} (₹${Math.max(0, i.originalAmount - (i.paidAmount || 0)).toLocaleString("en-IN")} due)`).join(" • ") || "none — all paid"}
+    </div>
+  );
+}
+
+function AllocSelect({ admissionId, value, onChange }: { admissionId: string; value: string; onChange: (v: string) => void }) {
+  const [list, setList] = useState<any[]>([]);
+  useEffect(() => {
+    fetch(`/api/admin/installments?admissionId=${encodeURIComponent(admissionId)}`, { cache: "no-store" })
+      .then((r) => r.json()).then((d) => Array.isArray(d) && setList(d)).catch(() => {});
+  }, [admissionId]);
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="flex-1 px-2 py-1.5 rounded-lg border text-xs bg-white">
+      <option value="">Select installment…</option>
+      {list.map((i) => (
+        <option key={i.id} value={i.id}>{i.label} — ₹{Number(i.originalAmount).toLocaleString("en-IN")} (paid ₹{Number(i.paidAmount || 0).toLocaleString("en-IN")})</option>
+      ))}
+    </select>
+  );
+}
+
+function ReceiptModal({ receiptNo, onClose }: { receiptNo: string; onClose: () => void }) {
+  const [data, setData] = useState<any>(null);
+  useEffect(() => {
+    fetch("/api/admin/receipts", { cache: "no-store" }).then((r) => r.json()).then((d) => {
+      const r = (Array.isArray(d) ? d : []).find((x: any) => x.receiptNo === receiptNo);
+      if (r) setData(r);
+    }).catch(() => {});
+  }, [receiptNo]);
+  return (
+    <div className="fixed inset-0 z-[70] bg-slate-900/40 p-4 grid place-items-center" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()}>
+        {data ? <ReceiptView r={{ receiptNo: data.receiptNo, amount: data.amount, createdAt: data.createdAt, feePayment: data.feePayment }} /> : <div className="bg-white p-8 rounded-2xl text-sm">Loading…</div>}
+      </div>
+    </div>
+  );
+}
+
+const ORDER_FLOW = ["placed", "payment_confirmed", "processing", "ready_for_handover", "handed_over", "completed"] as const;
+const ORDER_LABEL: Record<string, string> = {
+  placed: "Order Placed",
+  payment_confirmed: "Payment Confirmed",
+  processing: "Processing",
+  ready_for_handover: "Ready for Handover",
+  handed_over: "Handed Over",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  payment_failed: "Payment Failed",
+};
+
+function OrdersTab() {
+  const [orders, setOrders] = useState<any[]>([]);
+  const [newCount, setNewCount] = useState(0);
+  const [filter, setFilter] = useState("all");
+  const [role, setRole] = useState("super_admin");
+  const [note, setNote] = useState<Record<string, string>>({});
+  const [openId, setOpenId] = useState<string | null>(null);
+  const load = () =>
+    fetch("/api/admin/orders", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.orders)) setOrders(d.orders);
+        setNewCount(Number(d.newCount || 0));
+      })
+      .catch(() => {});
+  useEffect(() => {
+    load();
+    fetch("/api/admin/login").then((r) => r.json()).then((d) => d.role && setRole(d.role)).catch(() => {});
+    const id = setInterval(load, 30000);
+    return () => clearInterval(id);
+  }, []);
+  const isSuper = role === "super_admin";
+  const act = async (id: string, action: string) => {
+    const r = await fetch("/api/admin/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action, note: note[id] || "" }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) { setNote({ ...note, [id]: "" }); load(); }
+    else alert(d.error || "Failed");
+  };
+  const filtered = orders.filter((o) => filter === "all" || o.status === filter);
+  const pill = (s: string) =>
+    s === "completed" || s === "handed_over" || s === "payment_confirmed"
+      ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+      : s === "cancelled" || s === "payment_failed"
+        ? "bg-red-50 border-red-200 text-red-700"
+        : "bg-amber-50 border-amber-200 text-amber-700";
+  return (
+    <div className="grid gap-4">
+      <div className="card p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-navy-900">Store Orders • {orders.length}</h2>
+          <p className="text-xs text-slate-500 mt-1">{newCount > 0 ? `🔔 ${newCount} new (placed / payment confirmed)` : "No new orders"} • Lifecycle: Placed → Payment Confirmed → Processing → Ready → Handed Over → Completed</p>
+        </div>
+        <div className="flex gap-1 flex-wrap">
+          {(["all", "placed", "payment_confirmed", "processing", "ready_for_handover", "handed_over", "completed", "cancelled"] as const).map((f) => (
+            <button key={f} onClick={() => setFilter(f)} className={`px-2.5 py-1.5 rounded-full text-xs border ${filter === f ? "bg-navy-900 text-white border-navy-900" : "bg-white border-slate-200"}`}>
+              {f === "all" ? `All (${orders.length})` : `${ORDER_LABEL[f] || f} (${orders.filter((x) => x.status === f).length})`}
+            </button>
+          ))}
+        </div>
+      </div>
+      {!isSuper && <div className="text-xs px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800">Read-only for finance — status changes need super_admin.</div>}
+      {filtered.length === 0 && <div className="card p-10 text-center text-sm text-slate-500">No {filter} orders yet.</div>}
+      {filtered.map((o) => (
+        <div key={o.id} className="card p-5">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-display font-bold text-navy-900">{o.orderNo}</span>
+                <span className={`px-2 py-1 rounded-full text-xs border ${pill(o.status)}`}>{ORDER_LABEL[o.status] || o.status}</span>
+                <span className={`px-2 py-1 rounded-full text-xs border ${o.paymentStatus === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : o.paymentStatus === "failed" ? "bg-red-50 border-red-200 text-red-700" : "bg-slate-100 border-slate-200 text-slate-600"}`}>Pay: {o.paymentStatus}</span>
+              </div>
+              <div className="text-sm text-slate-700 mt-2">{o.name} • <a href={`tel:${o.phone}`} className="text-sky-700 hover:underline">{o.phone}</a> • {o.email}</div>
+              <div className="text-xs text-slate-500 mt-1">Ordered {new Date(o.createdAt).toLocaleString("en-IN")}{o.razorpayPaymentId ? ` • Ref: ${o.razorpayPaymentId}` : ""}{o.handedOverAt ? ` • Handed over ${new Date(o.handedOverAt).toLocaleString("en-IN")} by ${o.handedOverBy}` : ""}</div>
+            </div>
+            <div className="text-right shrink-0">
+              <div className="text-xl font-bold text-navy-900">₹{Number(o.subtotal).toLocaleString("en-IN")}</div>
+              <button onClick={() => setOpenId(openId === o.id ? null : o.id)} className="mt-1 text-xs text-sky-700 hover:underline">{openId === o.id ? "Hide details ▲" : "Details + history ▼"}</button>
+            </div>
+          </div>
+
+          {openId === o.id && (
+            <div className="mt-4 grid lg:grid-cols-2 gap-4">
+              <div>
+                <div className="text-xs font-bold tracking-widest text-slate-500">ITEMS</div>
+                <div className="mt-2 grid gap-2">
+                  {(o.items || []).map((it: any) => (
+                    <div key={it.id} className="flex justify-between text-sm p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                      <span>{it.name} {it.size ? <b>• Size {it.size}</b> : ""} <span className="text-slate-500">× {it.qty}</span></span>
+                      <span className="font-medium">₹{(Number(it.price) * Number(it.qty)).toLocaleString("en-IN")}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-xs tracking-widest font-bold text-slate-500 mt-4">STATUS FLOW</div>
+                <div className="mt-2 flex flex-wrap items-center gap-1 text-[11px]">
+                  {ORDER_FLOW.map((s, i) => {
+                    const reached = ORDER_FLOW.indexOf(o.status as any) >= i;
+                    return (
+                      <span key={s} className="flex items-center gap-1">
+                        <span className={`px-2 py-1 rounded-full border ${reached ? "bg-navy-900 text-white border-navy-900" : "bg-white border-slate-200 text-slate-400"}`}>{ORDER_LABEL[s]}</span>
+                        {i < ORDER_FLOW.length - 1 && <span className="text-slate-300">→</span>}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-bold tracking-widest text-slate-500">HISTORY / AUDIT TRAIL</div>
+                <div className="mt-2 grid gap-1.5 max-h-56 overflow-auto pr-1">
+                  {(o.events || []).map((e: any) => (
+                    <div key={e.id} className="text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                      <span className="font-semibold text-navy-900">{e.action.replace(/_/g, " ")}</span>
+                      <span className="text-slate-500"> • by {e.actor} • {new Date(e.createdAt).toLocaleString("en-IN")}</span>
+                      {e.note && <div className="text-slate-600 mt-0.5">{e.note}</div>}
+                    </div>
+                  ))}
+                  {(o.events || []).length === 0 && <div className="text-xs text-slate-400">No events yet.</div>}
+                </div>
+                {isSuper && (
+                  <div className="mt-3">
+                    <input value={note[o.id] || ""} onChange={(e) => setNote({ ...note, [o.id]: e.target.value })} placeholder="Note for handover/cancel (optional)" className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs" />
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {(o.status === "placed" || o.status === "payment_confirmed") && <button onClick={() => act(o.id, "start_processing")} className="px-3 py-1.5 rounded-full bg-navy-900 text-white text-xs">Start Processing</button>}
+                      {["placed", "payment_confirmed", "processing"].includes(o.status) && <button onClick={() => act(o.id, "mark_ready")} className="px-3 py-1.5 rounded-full bg-sky-600 text-white text-xs">Ready for Handover</button>}
+                      {["ready_for_handover", "processing", "payment_confirmed"].includes(o.status) && <button onClick={() => { if (confirm(`Confirm handover of ${o.orderNo} to customer?`)) act(o.id, "handover"); }} className="px-3 py-1.5 rounded-full bg-emerald-600 text-white text-xs font-semibold">✓ Confirm Handover</button>}
+                      {o.status === "handed_over" && <button onClick={() => act(o.id, "complete")} className="px-3 py-1.5 rounded-full bg-emerald-600 text-white text-xs">Complete Order</button>}
+                      {!["handed_over", "completed", "cancelled"].includes(o.status) && <button onClick={() => { if (confirm("Cancel this order?")) act(o.id, "cancel"); }} className="px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs">Cancel</button>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

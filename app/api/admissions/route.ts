@@ -1,34 +1,141 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
+import { uploadDataUrl } from "@/lib/storage";
+import { newApplicationId, addMonths, audit } from "@/lib/identifiers";
 
-const feeMap: Record<string, number> = { SI: 25000, Constable: 18000, Groups: 22000, "SSC GD": 15000, Defence: 20000, Army: 20000, UPSC: 45000 };
-function getFee(course: string, mode: string) {
+const FALLBACK_FEE: Record<string, Record<string, number>> = {
+  SI: { Residential: 35000, Offline: 25000, Online: 15000 },
+  Constable: { Residential: 28000, Offline: 18000, Online: 10800 },
+  Groups: { Residential: 32000, Offline: 22000, Online: 13200 },
+  "SSC GD": { Residential: 25000, Offline: 15000, Online: 9000 },
+  Defence: { Residential: 30000, Offline: 20000, Online: 12000 },
+  Army: { Residential: 30000, Offline: 20000, Online: 12000 },
+  UPSC: { Residential: 75000, Offline: 45000, Online: 27000 },
+};
+async function getFee(course: string, mode: string, duration?: string, medium?: string, branch?: string) {
+  try {
+    // Lookup order: exact → peel branch → peel medium → peel duration → Base ("","","") → hardcoded fallback
+    const d = duration || "", m = medium || "", b = branch || "";
+    const chain: [string, string, string][] = [[d, m, b], [d, m, ""], [d, "", ""], ["", "", ""]];
+    const seen = new Set<string>();
+    for (const [dd, mm, bb] of chain) {
+      const key = `${dd}|${mm}|${bb}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const hit = await prisma.feeConfig.findUnique({ where: { course_mode_duration_medium_branch: { course, mode, duration: dd, medium: mm, branch: bb } } });
+      if (hit) return hit.amount;
+    }
+  } catch {}
+  if (FALLBACK_FEE[course]?.[mode] !== undefined) return FALLBACK_FEE[course][mode];
+  const feeMap: Record<string, number> = { SI: 25000, Constable: 18000, Groups: 22000, "SSC GD": 15000, Defence: 20000, Army: 20000, UPSC: 45000 };
   let base = feeMap[course] || 15000;
   if (mode === "Residential") base += 10000;
   if (mode === "Online") base = Math.round(base * 0.6);
   return base;
 }
 
+const SPLIT_METHODS = ["cash", "upi", "bank", "razorpay"];
+
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, fatherName, phone, email, address, reference, branch, course, courseType, medium, mode, batchId, paymentMethod, transactionId, screenshot, amount } = body;
+  const { name, fatherName, phone, email, address, reference, branch, course, courseType, medium, mode, batchId, durationId, addonIds, photo, payments } = body;
 
   if (!name || !fatherName || !phone || !email || !address || !branch || !course) return NextResponse.json({ error: "name, fatherName, phone, email, address, branch, course required" }, { status: 400 });
-  if (!/^[0-9]{10}$/.test(phone)) return NextResponse.json({ error: "phone must be 10 digits" }, { status: 400 });
+  if (!/^[0-9]{10}$/.test(String(phone).trim())) return NextResponse.json({ error: "phone must be 10 digits" }, { status: 400 });
 
-  const pm = String(paymentMethod || "cash").toLowerCase();
-  if (!["cash", "upi", "bank"].includes(pm)) return NextResponse.json({ error: "paymentMethod must be cash|upi|bank" }, { status: 400 });
-
-  if (pm === "upi") {
-    if (!transactionId) return NextResponse.json({ error: "UPI requires transaction ID" }, { status: 400 });
-    if (!screenshot) return NextResponse.json({ error: "UPI requires screenshot" }, { status: 400 });
+  // Duration (snapshot)
+  let durationName = "3 Months";
+  let durationMonths = 3;
+  if (durationId) {
+    const d = await prisma.duration.findUnique({ where: { id: String(durationId) } });
+    if (!d || !d.active) return NextResponse.json({ error: "Invalid or inactive duration" }, { status: 400 });
+    durationName = d.name;
+    durationMonths = d.months;
   }
-  if (pm === "bank" && !transactionId) return NextResponse.json({ error: "Bank transfer requires transaction ID" }, { status: 400 });
 
-  const fee = amount ? Number(amount) : getFee(String(course), String(mode || "Residential"));
+  // Batch validation: active + open + seats left (no seat hold — hold happens at approval)
+  let batch: any = null;
+  if (batchId) {
+    batch = await prisma.batch.findUnique({ where: { id: String(batchId) } });
+    if (!batch) return NextResponse.json({ error: "Batch not found" }, { status: 400 });
+    if (!batch.isActive || batch.status !== "open") return NextResponse.json({ error: "Batch is not active" }, { status: 400 });
+    if (batch.filled >= batch.seats) return NextResponse.json({ error: "Batch is full — choose another batch" }, { status: 400 });
+  }
+
+  // Add-ons validation: active + applicable, snapshot fees
+  let addonRows: { addonId: string; name: string; fee: number }[] = [];
+  if (Array.isArray(addonIds) && addonIds.length > 0) {
+    const addons = await prisma.addon.findMany({ where: { id: { in: addonIds.map(String) } } });
+    if (addons.length !== addonIds.length) return NextResponse.json({ error: "Invalid add-on selected" }, { status: 400 });
+    for (const a of addons) {
+      if (!a.active) return NextResponse.json({ error: `Add-on ${a.name} is not available` }, { status: 400 });
+      if (a.courses.length > 0 && !a.courses.includes(String(course))) {
+        return NextResponse.json({ error: `Add-on ${a.name} not applicable to ${course}` }, { status: 400 });
+      }
+      addonRows.push({ addonId: a.id, name: a.name, fee: a.fee });
+    }
+  }
+  const addonFees = addonRows.reduce((s, a) => s + a.fee, 0);
+
+  // Photo upload (optional but encouraged)
+  let photoUrl: string | null = null;
+  if (photo) {
+    try {
+      photoUrl = await uploadDataUrl("applicant-photos", String(photo), "photo");
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message || "Photo upload failed" }, { status: 400 });
+    }
+  }
+
+  const baseFee = await getFee(String(course), String(mode || "Residential"), durationName, String(medium || ""), String(branch || ""));
+  // Registration never sets discount — discount goes through approval flow
+  const totalFee = baseFee + addonFees;
+
+  // Optional payment splits at registration (may be empty = pay later)
+  type Split = { method: string; amount: number; transactionId: string | null; screenshot: string | null };
+  const splits: Split[] = [];
+  if (Array.isArray(payments) && payments.length > 0) {
+    for (let i = 0; i < payments.length; i++) {
+      const p = payments[i];
+      const method = String(p.method || "").toLowerCase();
+      if (!SPLIT_METHODS.includes(method)) return NextResponse.json({ error: `Split ${i + 1}: method must be cash|upi|bank|razorpay` }, { status: 400 });
+      const amt = Math.round(Number(p.amount));
+      if (!amt || amt <= 0) return NextResponse.json({ error: `Split ${i + 1}: amount must be > 0` }, { status: 400 });
+      const txn = p.transactionId ? String(p.transactionId).trim() : "";
+      let shot: string | null = null;
+      if (p.screenshot) {
+        try {
+          shot = await uploadDataUrl("payment-proofs", String(p.screenshot), "proof");
+        } catch (e: any) {
+          return NextResponse.json({ error: `Split ${i + 1}: ${e.message}` }, { status: 400 });
+        }
+      }
+      if (method === "upi") {
+        if (!txn) return NextResponse.json({ error: `Split ${i + 1} (UPI): transaction ID required` }, { status: 400 });
+        if (!shot) return NextResponse.json({ error: `Split ${i + 1} (UPI): screenshot required` }, { status: 400 });
+      }
+      if (method === "bank" && !txn) return NextResponse.json({ error: `Split ${i + 1} (Bank): transaction ID required` }, { status: 400 });
+      splits.push({ method, amount: amt, transactionId: txn || null, screenshot: shot });
+    }
+  }
+  const paidSum = splits.reduce((s, x) => s + x.amount, 0);
+  if (paidSum > totalFee) return NextResponse.json({ error: `Split total exceeds fee ₹${totalFee.toLocaleString("en-IN")}` }, { status: 400 });
+  const balance = totalFee - paidSum;
+
+  // Dates: batch start defaults admission start; end = start + duration (snapshots)
+  const startDate = batch ? new Date(batch.startDate) : new Date();
+  const endDate = addMonths(startDate, durationMonths);
+
+  const applicationId = await newApplicationId();
+  const clarificationToken = crypto.randomBytes(24).toString("hex");
+  const primary = splits[0];
+
   const entry = await prisma.admission.create({
     data: {
       id: `ADM-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      applicationId,
+      clarificationToken,
       name: String(name).trim(),
       fatherName: String(fatherName).trim(),
       phone: String(phone).trim(),
@@ -40,14 +147,50 @@ export async function POST(req: NextRequest) {
       courseType: String(courseType || "Regular"),
       medium: String(medium || "Telugu"),
       mode: String(mode || "Residential"),
-      batchId: batchId || null,
-      paymentMethod: pm,
-      transactionId: transactionId ? String(transactionId).trim() : null,
-      screenshot: screenshot ? String(screenshot).slice(0, 500000) : null,
-      amount: fee,
-      feeAmount: fee,
+      batchId: batch ? batch.id : null,
+      batchName: batch ? (batch.name || `${batch.course} • ${batch.slot || batch.mode}`) : null,
+      durationId: durationId ? String(durationId) : null,
+      durationName,
+      durationMonths,
+      admissionStartDate: startDate,
+      courseEndDate: endDate,
+      photo: photoUrl,
+      paymentMethod: primary ? primary.method : "cash",
+      transactionId: primary?.transactionId || null,
+      screenshot: primary?.screenshot || null,
+      amount: baseFee,
+      feeAmount: baseFee,
+      addonFees,
+      discount: 0,
+      discountPercent: 0,
+      discountStatus: "none",
+      totalFee,
+      finalFee: null,
+      feeLocked: false,
+      payingNow: paidSum,
+      balanceDue: balance,
+      paidAmount: paidSum,
       status: "pending",
     },
   });
-  return NextResponse.json({ ok: true, id: entry.id, status: "pending" });
+
+  if (addonRows.length > 0) {
+    await prisma.applicationAddon.createMany({
+      data: addonRows.map((a) => ({ admissionId: entry.id, addonId: a.addonId, name: a.name, fee: a.fee })),
+    });
+  }
+
+  const rows = await Promise.all(
+    splits.map((s) =>
+      prisma.admissionPayment.create({
+        data: { admissionId: entry.id, method: s.method, amount: s.amount, transactionId: s.transactionId, screenshot: s.screenshot, recordedBy: entry.email },
+      })
+    )
+  );
+
+  await audit("admission", entry.id, entry.email, "application_submitted", `Application ${applicationId}`);
+
+  // NOTE: no user/student account is created here — only after admin approval.
+  // correctionToken is returned once so the applicant can save their correction link (no portal access).
+  return NextResponse.json({ ok: true, id: entry.id, applicationId, correctionToken: clarificationToken, status: "pending", totalFee, payingNow: paidSum, balanceDue: balance, payments: rows });
 }

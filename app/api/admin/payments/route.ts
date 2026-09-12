@@ -1,24 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import { requireAdminSession } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
-
-const feeMap: Record<string, number> = {
-  "SI": 25000,
-  "Constable": 18000,
-  "Groups": 22000,
-  "SSC GD": 15000,
-  "Defence": 20000,
-  "Army": 20000,
-  "UPSC": 45000,
-};
-
-function getFee(course: string, mode: string) {
-  let base = feeMap[course] || 15000;
-  if (mode === "Residential") base += 10000;
-  if (mode === "Online") base = Math.round(base * 0.6);
-  return base;
-}
+import { supabaseAdmin } from "@/lib/supabase";
 
 export async function POST(req: NextRequest) {
   const auth = await requireAdminSession(req, ["super_admin", "finance"]);
@@ -36,6 +19,16 @@ export async function POST(req: NextRequest) {
   if (!user && (createStudent || studentId === "new")) {
     const pw = String(password || "").trim() || `Ayaan@${String(phone).slice(-4)}`;
     if (pw.length < 6) return NextResponse.json({ error: "Password min 6 chars for new student" }, { status: 400 });
+
+    // Create Supabase Auth user
+    const { data: supaData, error: supaError } = await supabaseAdmin.auth.admin.createUser({
+      email: String(email).trim().toLowerCase(),
+      password: pw,
+      email_confirm: true,
+      user_metadata: { name: String(name).trim(), phone: String(phone).trim(), course: String(course) },
+    });
+    if (supaError) return NextResponse.json({ error: `Supabase error: ${supaError.message}` }, { status: 400 });
+
     user = await prisma.user.create({
       data: {
         name: String(name).trim(),
@@ -48,7 +41,7 @@ export async function POST(req: NextRequest) {
         courseType: String(courseType || "Regular"),
         medium: String(medium || "Telugu"),
         mode: String(mode || "Offline"),
-        passwordHash: bcrypt.hashSync(pw, 10),
+        supabaseId: supaData.user.id,
         isActive: true,
       },
     });

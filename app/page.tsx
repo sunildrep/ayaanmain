@@ -5,6 +5,7 @@ import FloatingParticles, { SectionDivider } from "@/components/deco/AnimatedEle
 import { PoliceSilhouetteLarge } from "@/components/deco/PoliceSilhouette";
 import { ArmySilhouetteLarge } from "@/components/deco/ArmySilhouette";
 import { GovtSilhouetteLarge } from "@/components/deco/GovtSilhouette";
+import HeroCarousel from "@/components/HeroCarousel";
 
 const coursesData = [
   { id: 1, title: "Sub-Inspector (SI)", tag: "SI", meta: "3 Months • Daily + Weekly Tests", langs: ["Telugu", "English"], desc: "Complete syllabus + practice tests as final model.", points: ["1600m & events", "Weekly grands + explanation", "Bilingual batches"], popular: true },
@@ -123,11 +124,10 @@ export default function Home() {
     else setJoinError(d.error || "Failed");
   };
 
-  return (
+    return (
     <div className="bg-[#fcfcfd] pb-20 lg:pb-0">
-      <div className="fixed top-[72px] lg:top-[104px] left-0 right-0 h-[2px] bg-slate-200 z-30">
-        <div className="h-full bg-navy-800 transition-all" style={{ width: `${progress}%` }} />
-      </div>
+      {/* Full-screen carousel — fits viewport with police & course imagery */}
+      <HeroCarousel />
 
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-slate-50 to-white" />

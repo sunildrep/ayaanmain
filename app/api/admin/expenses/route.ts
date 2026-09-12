@@ -13,12 +13,67 @@ export async function POST(req: NextRequest) {
   const auth = await requireAdminSession(req, ["super_admin", "finance"]);
   if (auth.error) return auth.error;
   const body = await req.json();
-  const { id, title, category, amount, dueDate, status, vendor, notes } = body;
-  if (!title || amount === undefined) return NextResponse.json({ error: "title and amount required" }, { status: 400 });
-  const item = await prisma.expense.upsert({
-    where: { id: id || "" },
-    update: { title: String(title), category: String(category || "General"), amount: Number(amount), dueDate: dueDate ? new Date(dueDate) : new Date(), status: status === "paid" ? "paid" : "pending", vendor: String(vendor || ""), notes: String(notes || "") },
-    create: { id: id || `EXP-${Date.now()}`, title: String(title), category: String(category || "General"), amount: Number(amount), dueDate: dueDate ? new Date(dueDate) : new Date(), status: status === "paid" ? "paid" : "pending", vendor: String(vendor || ""), notes: String(notes || "") },
+  const { id, title, expense, category, amount, paidBy, paymentMethod, expenseDate, dueDate, status, vendor, notes, action } = body;
+
+  // Handle approval actions (super_admin only) — before validation since action-only payload has no title/amount
+  if (action && id) {
+    if (auth.session.role !== "super_admin") return NextResponse.json({ error: "Only super_admin can approve" }, { status: 403 });
+    const existing = await prisma.expense.findUnique({ where: { id } });
+    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (action === "approve") {
+      const updated = await prisma.expense.update({ where: { id }, data: { status: "approved", approvedBy: auth.session.username } });
+      return NextResponse.json(updated);
+    }
+    if (action === "reject") {
+      const updated = await prisma.expense.update({ where: { id }, data: { status: "rejected", approvedBy: auth.session.username } });
+      return NextResponse.json(updated);
+    }
+    if (action === "markPaid") {
+      const updated = await prisma.expense.update({ where: { id }, data: { status: "paid", approvedBy: auth.session.username } });
+      return NextResponse.json(updated);
+    }
+    return NextResponse.json({ error: "unknown action" }, { status: 400 });
+  }
+
+  const expenseTitle = String(expense || title || "").trim();
+  if (!expenseTitle || amount === undefined) return NextResponse.json({ error: "expense and amount required" }, { status: 400 });
+
+  // Determine status: if super_admin creates, auto-approved; otherwise pending for approval
+  const isSuper = auth.session.role === "super_admin";
+  const finalStatus = status ? String(status) : isSuper ? "approved" : "pending";
+
+  const data: any = {
+    title: expenseTitle,
+    category: String(category || "General"),
+    amount: Number(amount),
+    paidBy: paidBy ? String(paidBy).trim() : null,
+    paymentMethod: ["cash", "UPI", "upi", "bank"].includes(String(paymentMethod || "").toLowerCase()) ? String(paymentMethod).toLowerCase() : "cash",
+    expenseDate: expenseDate ? new Date(expenseDate) : new Date(),
+    dueDate: dueDate ? new Date(dueDate) : new Date(),
+    status: finalStatus,
+    vendor: String(vendor || paidBy || "").trim(),
+    notes: String(notes || "").trim(),
+  };
+
+  if (id) {
+    const existing = await prisma.expense.findUnique({ where: { id } });
+    if (existing) {
+      // Only super_admin can edit approved, anyone can edit pending own
+      const updated = await prisma.expense.update({
+        where: { id },
+        data: { ...data, approvedBy: isSuper && finalStatus === "approved" ? auth.session.username : existing.approvedBy },
+      });
+      return NextResponse.json(updated);
+    }
+  }
+
+  const item = await prisma.expense.create({
+    data: {
+      id: id || `EXP-${Date.now()}`,
+      ...data,
+      requestedBy: auth.session.username,
+      approvedBy: isSuper ? auth.session.username : null,
+    },
   });
   return NextResponse.json(item);
 }

@@ -45,6 +45,7 @@ interface RazorpayCheckoutProps {
   userEmail: string;
   userPhone: string;
   course: string;
+  description?: string;
   onSuccess: (paymentId: string, orderId: string, signature: string) => Promise<void>;
   onError: (error: string) => void;
   onClose: () => void;
@@ -57,6 +58,7 @@ export default function RazorpayCheckout({
   userEmail,
   userPhone,
   course,
+  description,
   onSuccess,
   onError,
   onClose,
@@ -83,7 +85,7 @@ export default function RazorpayCheckout({
       amount: amount * 100,
       currency: "INR",
       name: "Ayaan Institute",
-      description: `${course} - Admission Payment`,
+      description: description || `${course} - Admission Payment`,
       order_id: orderId,
       prefill: {
         name: userName,
@@ -117,7 +119,7 @@ export default function RazorpayCheckout({
     return () => {
       rzp.close();
     };
-  }, [loaded, orderId, amount, userName, userEmail, userPhone, course, onSuccess, onError, onClose]);
+  }, [loaded, orderId, amount, userName, userEmail, userPhone, course, description, onSuccess, onError, onClose]);
 
   return null;
 }

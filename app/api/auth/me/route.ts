@@ -14,5 +14,5 @@ export async function GET(req: NextRequest) {
   const where: any = { email: user.email };
   if (user.admissionId) where.OR = [{ id: user.admissionId }, { email: user.email }];
   const admission = await prisma.admission.findFirst({ where });
-  return NextResponse.json({ authenticated: true, user: { id: user.id, name: user.name, email: user.email, phone: user.phone, course: user.course, medium: user.medium, mode: user.mode, createdAt: user.createdAt.toISOString() }, admission }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ authenticated: true, mustChangePassword: !!user.mustChangePassword, user: { id: user.id, name: user.name, email: user.email, phone: user.phone, course: user.course, medium: user.medium, mode: user.mode, studentId: user.studentId, digitalIdNo: user.digitalIdNo, digitalIdValidFrom: user.digitalIdValidFrom, digitalIdValidUntil: user.digitalIdValidUntil, digitalIdStatus: user.digitalIdStatus, createdAt: user.createdAt.toISOString() }, admission }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -83,7 +83,7 @@ export default function AlumniPage() {
                 </div>
                 <div className="mt-3 text-sm leading-relaxed text-slate-700 flex-1">“{a.quote}”</div>
                 {a.video ? (
-                  <div className="mt-4">
+                  <div className="mt-auto pt-4">
                     {playing === a.id ? (
                       <div className="rounded-xl overflow-hidden border border-slate-200 bg-black aspect-video">
                         <iframe src={toEmbed(a.video)} title={a.name} className="w-full h-full" allow="autoplay; encrypted-media" allowFullScreen />
@@ -91,13 +91,13 @@ export default function AlumniPage() {
                     ) : (
                       <button onClick={() => setPlaying(a.id)} className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-white hover:shadow-sm transition text-left">
                         <span className="w-10 h-10 rounded-full bg-red-600 text-white grid place-items-center shrink-0">▶</span>
-                        <div><div className="text-sm font-medium text-navy-900">Watch story</div><div className="text-xs text-slate-500 truncate">{a.video}</div></div>
-                        <span className="ml-auto text-xs text-slate-400">Play</span>
+                        <div className="flex-1 min-w-0"><div className="text-sm font-medium text-navy-900">Watch story</div><div className="text-xs text-slate-500 truncate">{a.video}</div></div>
+                        <span className="shrink-0 text-xs text-slate-400">Play</span>
                       </button>
                     )}
                   </div>
                 ) : (
-                  <div className="mt-4 text-xs text-slate-400">No video — text testimonial</div>
+                  <div className="mt-auto pt-4 text-xs text-slate-400">No video — text testimonial</div>
                 )}
                 <div className="mt-3 text-xs text-slate-400">{new Date(a.createdAt).toLocaleDateString("en-IN", { year: "numeric", month: "short" })} • {a.id}</div>
               </div>
@@ -109,7 +109,7 @@ export default function AlumniPage() {
           <div className="font-semibold text-navy-900">Your story next?</div>
           <div className="text-sm text-slate-600 mt-1">Join a batch, get your uniform, share your journey.</div>
           <div className="mt-4 flex gap-2 justify-center">
-            <Link href="/admission" className="btn-primary">Get Admission →</Link>
+            <Link href="/admission" className="btn-primary">Get Registered →</Link>
             <Link href="/contact" className="btn-ghost">Visit Campus</Link>
           </div>
         </div>

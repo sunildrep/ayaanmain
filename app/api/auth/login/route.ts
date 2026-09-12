@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import bcrypt from "bcryptjs";
+import { supabase } from "@/lib/supabase";
 import crypto from "crypto";
 
 const SESSION_EXPIRY_DAYS = 7;
@@ -10,17 +10,52 @@ export async function POST(req: NextRequest) {
   const identifier = (email || phone || "").toString().trim().toLowerCase();
   if (!identifier || !password) return NextResponse.json({ error: "email/phone and password required" }, { status: 400 });
 
-  const user = await prisma.user.findFirst({ where: { OR: [{ email: identifier }, { phone: identifier }] } });
-  if (!user || !user.passwordHash || !bcrypt.compareSync(String(password), user.passwordHash)) {
+  // Resolve email from identifier (email or phone)
+  let emailToCheck = identifier;
+  if (!identifier.includes("@")) {
+    // phone provided, lookup email
+    const byPhone = await prisma.user.findFirst({ where: { phone: identifier } });
+    if (!byPhone) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    emailToCheck = byPhone.email.toLowerCase();
+  }
+
+  // Authenticate via Supabase Auth only
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: emailToCheck,
+    password: String(password),
+  });
+
+  if (error || !data.user) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
-  if (!user.isActive) return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
 
+  // Lookup prisma user by email or supabaseId
+  let user = await prisma.user.findUnique({ where: { email: emailToCheck } });
+  if (!user) {
+    user = await prisma.user.findFirst({ where: { supabaseId: data.user.id } });
+  }
+  if (!user) {
+    await supabase.auth.signOut();
+    return NextResponse.json({ error: "Account not found" }, { status: 404 });
+  }
+  if (!user.isActive) {
+    await supabase.auth.signOut();
+    return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
+  }
+
+  // Link supabaseId if not already
+  if (!user.supabaseId) {
+    await prisma.user.update({ where: { id: user.id }, data: { supabaseId: data.user.id } });
+  }
+
+  // Create our session (keep existing session logic, but auth source is Supabase)
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
   await prisma.session.create({ data: { token, userId: user.id, role: "student", username: user.email, name: user.name, expiresAt } });
 
-  const res = NextResponse.json({ ok: true, user: { id: user.id, name: user.name, email: user.email, phone: user.phone, course: user.course } });
+  await supabase.auth.signOut();
+
+  const res = NextResponse.json({ ok: true, mustChangePassword: !!user.mustChangePassword, user: { id: user.id, name: user.name, email: user.email, phone: user.phone, course: user.course } });
   res.cookies.set("ayaan_session", token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

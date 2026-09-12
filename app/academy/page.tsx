@@ -5,9 +5,9 @@ export default function AcademyPage(){
     <div className="bg-[#fcfcfd]">
       <section className="bg-navy-900 text-white">
         <div className="container-soft py-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/20 text-xs">RESIDENTIAL • INDIA'S FIRST</div>
-          <h1 className="mt-3 font-display font-bold text-3xl lg:text-4xl">Ayaan Police Academy</h1>
-          <p className="mt-2 text-white/70 max-w-2xl">Own campus — classroom, grounds, hostel within 100m. Written by senior faculty. Physical by Director himself.</p>
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/20 text-xs">ASPIRANT CORNER • RESIDENTIAL • INDIA'S FIRST</div>
+          <h1 className="mt-3 font-display font-bold text-3xl lg:text-4xl">Aspirant Corner — Ayaan Police Academy</h1>
+          <p className="mt-2 text-white/70 max-w-2xl">Own campus — classroom, grounds, hostel within 100m. Written by senior faculty. Physical by Director himself. Your dedicated space for preparation strategy, facilities & hostel life.</p>
           <div className="mt-6 flex gap-3">
             <Link href="/contact" className="px-6 py-3 rounded-full bg-white text-navy-900 text-sm font-semibold">Apply for Residential Batch</Link>
             <Link href="/courses" className="px-6 py-3 rounded-full bg-white/10 border border-white/20 text-white text-sm font-semibold">View Day-Scholar Option</Link>

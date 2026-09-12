@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import { requireAdminSession } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
+import { supabaseAdmin } from "@/lib/supabase";
 
-function stripHash(user: any) {
-  const { passwordHash, ...safe } = user;
+function stripSensitive(user: any) {
+  const { passwordHash, supabaseId, ...safe } = user;
   return safe;
 }
 
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const auth = await requireAdminSession(req, ["super_admin", "admissions", "finance"]);
   if (auth.error) return auth.error;
   const users = await prisma.user.findMany({ orderBy: { createdAt: "desc" } });
-  return NextResponse.json(users.map(stripHash), { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json(users.map(stripSensitive), { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: NextRequest) {
@@ -27,6 +27,16 @@ export async function POST(req: NextRequest) {
     if (password.length < 6) return NextResponse.json({ error: "password min 6 chars" }, { status: 400 });
     const exists = await prisma.user.findUnique({ where: { email: String(email).toLowerCase() } });
     if (exists) return NextResponse.json({ error: "Email already exists" }, { status: 400 });
+
+    // Create Supabase Auth user first
+    const { data: supaData, error: supaError } = await supabaseAdmin.auth.admin.createUser({
+      email: String(email).trim().toLowerCase(),
+      password: String(password),
+      email_confirm: true,
+      user_metadata: { name: String(name).trim(), phone: String(phone).trim(), course: String(course || "SI") },
+    });
+    if (supaError) return NextResponse.json({ error: `Supabase error: ${supaError.message}` }, { status: 400 });
+
     const user = await prisma.user.create({
       data: {
         name: String(name).trim(),
@@ -40,11 +50,11 @@ export async function POST(req: NextRequest) {
         courseType: String(courseType || "Regular"),
         medium: String(medium || "Telugu"),
         mode: String(mode || "Residential"),
-        passwordHash: bcrypt.hashSync(String(password), 10),
+        supabaseId: supaData.user.id,
         isActive: true,
       },
     });
-    return NextResponse.json({ ok: true, user: stripHash(user) });
+    return NextResponse.json({ ok: true, user: stripSensitive(user) });
   }
 
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
@@ -54,16 +64,39 @@ export async function POST(req: NextRequest) {
   let updated: any;
   if (action === "toggleActive") {
     updated = await prisma.user.update({ where: { id }, data: { isActive: active !== undefined ? !!active : !user.isActive } });
+    // Optionally also ban/unban in Supabase
+    if (user.supabaseId) {
+      await supabaseAdmin.auth.admin.updateUserById(user.supabaseId, { ban_duration: updated.isActive ? "none" : "876000h" } as any);
+    }
   } else if (action === "resetPassword") {
     if (!password || password.length < 6) return NextResponse.json({ error: "Password min 6 chars" }, { status: 400 });
-    updated = await prisma.user.update({ where: { id }, data: { passwordHash: bcrypt.hashSync(String(password), 10) } });
+    if (user.supabaseId) {
+      const { error } = await supabaseAdmin.auth.admin.updateUserById(user.supabaseId, { password: String(password) });
+      if (error) return NextResponse.json({ error: `Supabase error: ${error.message}` }, { status: 400 });
+    } else {
+      // Create Supabase user if not exists (migration case)
+      const { data, error } = await supabaseAdmin.auth.admin.createUser({
+        email: user.email,
+        password: String(password),
+        email_confirm: true,
+      });
+      if (error) return NextResponse.json({ error: `Supabase error: ${error.message}` }, { status: 400 });
+      await prisma.user.update({ where: { id }, data: { supabaseId: data.user.id } });
+    }
+    updated = await prisma.user.findUnique({ where: { id } });
   } else if (action === "update") {
+    const newEmail = email ? String(email).toLowerCase() : undefined;
+    // If email changing, update Supabase as well
+    if (newEmail && newEmail !== user.email && user.supabaseId) {
+      const { error } = await supabaseAdmin.auth.admin.updateUserById(user.supabaseId, { email: newEmail });
+      if (error) return NextResponse.json({ error: `Supabase error: ${error.message}` }, { status: 400 });
+    }
     updated = await prisma.user.update({
       where: { id },
       data: {
         name: name ? String(name) : undefined,
         fatherName: fatherName !== undefined ? String(fatherName) : undefined,
-        email: email ? String(email).toLowerCase() : undefined,
+        email: newEmail,
         phone: phone ? String(phone) : undefined,
         address: address !== undefined ? String(address) : undefined,
         reference: reference !== undefined ? String(reference) : undefined,
@@ -75,10 +108,13 @@ export async function POST(req: NextRequest) {
       },
     });
   } else if (action === "delete") {
+    if (user.supabaseId) {
+      await supabaseAdmin.auth.admin.deleteUser(user.supabaseId);
+    }
     await prisma.user.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } else {
     return NextResponse.json({ error: "unknown action" }, { status: 400 });
   }
-  return NextResponse.json({ ok: true, user: stripHash(updated) });
+  return NextResponse.json({ ok: true, user: stripSensitive(updated) });
 }

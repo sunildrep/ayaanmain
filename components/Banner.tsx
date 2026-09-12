@@ -71,7 +71,7 @@ export default function Banner() {
     data.type === "urgent"
       ? "bg-red-600 text-white"
       : data.type === "warning"
-        ? "bg-amber-500 text-white"
+        ? "bg-[#f59e0b] text-white"
         : data.type === "success"
           ? "bg-emerald-600 text-white"
           : "bg-navy-900 text-white";
