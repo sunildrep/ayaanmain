@@ -1,25 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { knowledgeBase as fallbackKB, retrieve as retrieveStatic, detectLang, uiStrings, type Lang, type KBChunk } from "@/data/knowledgeBase";
+import { knowledgeBase as fallbackKB, retrieve, detectLang, uiStrings, type Lang, type KBChunk } from "@/data/knowledgeBase";
 
 type Msg = { id: string; role: "user" | "assistant"; text: string; sources?: string[]; lang: Lang };
-
-function retrieveDynamic(query: string, kb: KBChunk[], topK = 2): KBChunk[] {
-  const q = query.toLowerCase();
-  const tokens = q.split(/[^a-z0-9\u0C00-\u0C7F\u0900-\u097F]+/).filter(Boolean);
-  const scored = kb.map((ch) => {
-    const text = `${ch.category} ${ch.keywords.join(" ")} ${ch.en} ${ch.hi} ${ch.te}`.toLowerCase();
-    let score = 0;
-    for (const t of tokens) if (text.includes(t)) score += 2;
-    for (const kw of ch.keywords) if (q.includes(kw.toLowerCase())) score += 5;
-    if (q.includes(ch.id)) score += 3;
-    if (q.includes(ch.category.toLowerCase())) score += 2;
-    return { ch, score };
-  });
-  scored.sort((a, b) => b.score - a.score);
-  if (!scored[0] || scored[0].score === 0) return [];
-  return scored.slice(0, topK).filter((s) => s.score > 0).map((s) => s.ch);
-}
 
 export default function RagBot() {
   const [open, setOpen] = useState(false);
@@ -72,7 +55,7 @@ export default function RagBot() {
     setInput("");
     setThinking(true);
     setTimeout(() => {
-      const hits = retrieveDynamic(raw, kb, 2);
+      const hits = retrieve(raw, kb, 2);
       let text: string, sources: string[];
       if (hits.length === 0) {
         text = uiStrings[useLang].fallback;

@@ -5,7 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { supabaseAdmin } from "@/lib/supabase";
 import { newStudentId, newDigitalIdNo, addMonths, audit } from "@/lib/identifiers";
 
-const INITIAL_PASSWORD = "Ayaan@1234";
+function generateInitialPassword(): string {
+  // 12-char random, e.g. Ayaan@A1B2C3 — per-student, not shared
+  const rand = crypto.randomBytes(6).toString("base64url").slice(0, 6).toUpperCase();
+  return `Ayaan@${rand}`;
+}
 
 export async function GET(req: NextRequest) {
   const auth = await requireAdminSession(req, ["super_admin", "admissions"]);
@@ -109,10 +113,11 @@ export async function POST(req: NextRequest) {
     const batchId = body.batchId ? String(body.batchId) : admission.batchId;
     if (!batchId) return NextResponse.json({ error: "Batch required for approval" }, { status: 400 });
 
-    // 1. Create Supabase Auth user with institute initial password (outside DB tx)
+    // 1. Create Supabase Auth user with per-student random initial password (outside DB tx)
+    const initialPassword = generateInitialPassword();
     const { data: supaData, error: supaError } = await supabaseAdmin.auth.admin.createUser({
       email: admission.email.toLowerCase(),
-      password: INITIAL_PASSWORD,
+      password: initialPassword,
       email_confirm: true,
       user_metadata: { name: admission.name, phone: admission.phone, course: admission.course },
     });
@@ -122,8 +127,8 @@ export async function POST(req: NextRequest) {
         const { data: list } = await supabaseAdmin.auth.admin.listUsers();
         const found = list?.users.find((u) => u.email?.toLowerCase() === admission.email.toLowerCase());
         if (!found) return NextResponse.json({ error: `Supabase error: ${supaError.message}` }, { status: 400 });
-        // Reset to institute password so first-login rule holds
-        await supabaseAdmin.auth.admin.updateUserById(found.id, { password: INITIAL_PASSWORD });
+        // Reset to a fresh random password so first-login rule holds
+        await supabaseAdmin.auth.admin.updateUserById(found.id, { password: initialPassword });
         supabaseId = found.id;
       } else {
         return NextResponse.json({ error: `Supabase error: ${supaError.message}` }, { status: 400 });
@@ -241,7 +246,7 @@ export async function POST(req: NextRequest) {
         admissionStartDate: result.startDate,
         courseEndDate: result.endDate,
         finalFee: result.finalFee,
-        initialPassword: INITIAL_PASSWORD,
+        initialPassword,
       });
     } catch (e: any) {
       return NextResponse.json({ error: e.message || "Approval failed" }, { status: 400 });

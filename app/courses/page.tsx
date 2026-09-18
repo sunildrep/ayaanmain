@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { courseDetails as fallbackDetails } from "@/data/courseDetails";
+import { dummyForCourse } from "@/lib/dummyImages";
 
 type Tab = "overview" | "prereq" | "notification" | "syllabus";
 type CourseDetail = (typeof fallbackDetails)[number];
@@ -142,6 +143,7 @@ export default function CoursesPage() {
       {activeCourse && (
         <section className="container-soft mt-6">
           <div className="card overflow-hidden border-sky-200 ring-1 ring-sky-100">
+            <img src={(activeCourse as any).image || dummyForCourse(activeCourse.slug)} alt={activeCourse.title} className="w-full h-48 object-cover" onError={(e) => { (e.target as HTMLImageElement).src = dummyForCourse(activeCourse.slug); }} />
             <div className="bg-navy-900 text-white p-5 lg:p-6 flex items-start justify-between gap-4">
               <div>
                 <div className="text-xs tracking-widest font-bold text-sky-300">{activeCourse.tag} • {activeCourse.duration}</div>
@@ -299,7 +301,9 @@ export default function CoursesPage() {
       <section className="container-soft mt-6">
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filtered.map((c) => (
-            <div key={c.slug} className={`card p-6 flex flex-col transition ${activeSlug === c.slug ? "ring-2 ring-navy-900 border-navy-900" : ""}`}>
+            <div key={c.slug} className={`card overflow-hidden flex flex-col transition ${activeSlug === c.slug ? "ring-2 ring-navy-900 border-navy-900" : ""}`}>
+              <img src={(c as any).image || dummyForCourse(c.slug)} alt={c.title} className="w-full h-40 object-cover" onError={(e) => { (e.target as HTMLImageElement).src = dummyForCourse(c.slug); }} />
+              <div className="p-6 flex flex-col flex-1">
               <div className="text-xs tracking-widest font-semibold text-sky-700">{c.tag}</div>
               <div className="mt-1 font-display font-bold text-navy-900 text-lg leading-tight">{c.title}</div>
               <div className="mt-2 text-sm text-slate-600 flex-1">{c.desc}</div>
@@ -317,6 +321,7 @@ export default function CoursesPage() {
                 <Link href="/admission" className="px-4 py-2.5 rounded-full border border-slate-200 text-sm font-medium hover:bg-slate-50 grid place-items-center">Enquire</Link>
               </div>
               <div className="mt-2 text-xs text-slate-500">Tap View Details → Prerequisites • Notification • Syllabus</div>
+              </div>
             </div>
           ))}
         </div>

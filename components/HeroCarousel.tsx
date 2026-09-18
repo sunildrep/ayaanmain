@@ -1,9 +1,9 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 type Slide = {
-  id: number;
+  id: string | number;
   badge: string;
   title: string;
   highlight: string;
@@ -14,7 +14,7 @@ type Slide = {
   accent: string;
 };
 
-const slides: Slide[] = [
+const fallbackSlides: Slide[] = [
   {
     id: 1,
     badge: "SI • CONSTABLE • MOST DEMANDED",
@@ -71,14 +71,38 @@ const slides: Slide[] = [
 ];
 
 export default function HeroCarousel() {
+  const [slides, setSlides] = useState<Slide[]>(fallbackSlides);
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
 
   useEffect(() => {
-    if (paused) return;
+    fetch("/api/carousel", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d) && d.length > 0) {
+          const mapped: Slide[] = d.map((s: any) => ({
+            id: s.id,
+            badge: s.badge || "",
+            title: s.title || "",
+            highlight: s.highlight || "",
+            desc: s.desc || "",
+            cta: { label: s.ctaLabel || "Learn More →", href: s.ctaHref || "/courses" },
+            cta2: s.cta2Label ? { label: s.cta2Label, href: s.cta2Href || "/contact" } : undefined,
+            image: s.image,
+            accent: s.accent || "from-sky-600 to-navy-900",
+          }));
+          setSlides(mapped);
+          setActive(0);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (paused || slides.length <= 1) return;
     const id = setInterval(() => setActive((i) => (i + 1) % slides.length), 4000);
     return () => clearInterval(id);
-  }, [paused]);
+  }, [paused, slides.length]);
 
   const go = (i: number) => setActive((i + slides.length) % slides.length);
 
@@ -136,7 +160,7 @@ export default function HeroCarousel() {
               {/* side stats card - desktop only */}
               <div className="hidden lg:block absolute right-8 top-1/2 -translate-y-1/2 w-[340px]">
                 <div className="rounded-3xl bg-white/95 backdrop-blur border border-white/40 p-5 shadow-2xl">
-                  <div className="text-xs tracking-widest font-bold text-sky-700">WHY AYAAN • {String(idx + 1).padStart(2, "0")} / 05</div>
+                  <div className="text-xs tracking-widest font-bold text-sky-700">WHY AYAAN • {String(idx + 1).padStart(2, "0")} / {String(slides.length).padStart(2, "0")}</div>
                   <div className="mt-2 font-display font-bold text-navy-900 leading-tight">Trusted by 5000+ families since 2016</div>
                   <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                     <div className="p-3 rounded-xl bg-slate-50 border"><div className="font-bold text-navy-900">9+</div><div className="text-[11px] text-slate-500">Years</div></div>

@@ -129,14 +129,19 @@ export function detectLang(text: string): Lang | null {
   return null;
 }
 
-export function retrieve(query: string, topK = 3): KBChunk[] {
+export function retrieve(query: string, kb: KBChunk[] = knowledgeBase, topK = 3): KBChunk[] {
+  // Support legacy call retrieve(query, topK) — if kb is a number, treat as topK
+  if (typeof kb === "number") {
+    topK = kb as unknown as number;
+    kb = knowledgeBase;
+  }
   const q = query.toLowerCase();
   const tokens = q.split(/[^a-z0-9\u0C00-\u0C7F\u0900-\u097F]+/).filter(Boolean);
-  const scored = knowledgeBase.map((ch) => {
+  const scored = (kb as KBChunk[]).map((ch) => {
     const text = `${ch.category} ${ch.keywords.join(" ")} ${ch.en} ${ch.hi} ${ch.te}`.toLowerCase();
     let score = 0;
     for (const t of tokens) if (text.includes(t)) score += 2;
-    for (const kw of ch.keywords) if (q.includes(kw)) score += 5;
+    for (const kw of ch.keywords) if (q.includes(kw.toLowerCase())) score += 5;
     // boost exact id/category
     if (q.includes(ch.id)) score += 3;
     if (q.includes(ch.category.toLowerCase())) score += 2;

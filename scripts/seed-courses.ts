@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { courseDetails } from "../data/courseDetails";
+import { FALLBACK_FEE } from "../lib/fees";
 
 const prisma = new PrismaClient();
 
@@ -22,23 +23,14 @@ async function main() {
   }
   console.log(`✅ ${branches.length} branches seeded`);
 
-  // FeeConfigs - fallback defaults
-  const fallback: Record<string, Record<string, number>> = {
-    SI: { Residential: 35000, Offline: 25000, Online: 15000 },
-    Constable: { Residential: 28000, Offline: 18000, Online: 10800 },
-    Groups: { Residential: 32000, Offline: 22000, Online: 13200 },
-    "SSC GD": { Residential: 25000, Offline: 15000, Online: 9000 },
-    Defence: { Residential: 30000, Offline: 20000, Online: 12000 },
-    Army: { Residential: 30000, Offline: 20000, Online: 12000 },
-    UPSC: { Residential: 75000, Offline: 45000, Online: 27000 },
-  };
+  // FeeConfigs - fallback defaults (centralized in lib/fees.ts)
   let feeCount = 0;
-  for (const course of Object.keys(fallback)) {
-    for (const mode of Object.keys(fallback[course])) {
+  for (const course of Object.keys(FALLBACK_FEE)) {
+    for (const mode of Object.keys(FALLBACK_FEE[course])) {
       await prisma.feeConfig.upsert({
         where: { course_mode_duration_medium_branch: { course, mode, duration: "", medium: "", branch: "" } },
-        update: { amount: fallback[course][mode] },
-        create: { course, mode, duration: "", medium: "", branch: "", amount: fallback[course][mode] },
+        update: { amount: FALLBACK_FEE[course][mode] },
+        create: { course, mode, duration: "", medium: "", branch: "", amount: FALLBACK_FEE[course][mode] },
       });
       feeCount++;
     }

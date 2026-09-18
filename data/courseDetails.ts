@@ -7,6 +7,7 @@ export type CourseDetail = {
   mode: string[];
   medium: string[];
   fee: string;
+  image: string; // dummy seeded — replace via Admin → Courses
   prerequisites: string[];
   notificationDate: string; // e.g. "Expected Jan 2027"
   syllabus: { subject: string; topics: string[] }[];
@@ -25,6 +26,7 @@ export const courseDetails: CourseDetail[] = [
     mode: ["Residential", "Offline", "Online"],
     medium: ["Telugu", "English"],
     fee: "₹35,000 (Residential incl. hostel/food) • ₹25,000 Offline",
+    image: "https://images.unsplash.com/photo-1542395975-d6d3f2761a28?q=80&w=800&auto=format&fit=crop",
     eligibility: "Graduation (any degree) from recognized university",
     ageLimit: "21 – 25 years (relaxation SC/ST/BC as per notification)",
     prerequisites: [
@@ -51,6 +53,7 @@ export const courseDetails: CourseDetail[] = [
     mode: ["Residential", "Offline", "Online"],
     medium: ["Telugu", "English"],
     fee: "₹28,000 (Residential) • ₹18,000 Offline",
+    image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=800&auto=format&fit=crop",
     eligibility: "Intermediate (10+2) pass — any group",
     ageLimit: "18 – 22 years (18-33 with reservations)",
     prerequisites: [
@@ -77,6 +80,7 @@ export const courseDetails: CourseDetail[] = [
     mode: ["Offline", "Online"],
     medium: ["Telugu", "English"],
     fee: "₹32,000 (Groups 1/2) • ₹22,000 (Groups 3/4)",
+    image: "https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=800&auto=format&fit=crop",
     eligibility: "Graduation for Gr 1/2; Intermediate for Gr 4",
     ageLimit: "18 – 44 years (TSPSC general)",
     prerequisites: [
@@ -102,6 +106,7 @@ export const courseDetails: CourseDetail[] = [
     mode: ["Offline", "Online"],
     medium: ["English", "Telugu"],
     fee: "₹18,000 Offline • ₹12,000 Online",
+    image: "https://images.unsplash.com/photo-1551836022-deb4988cc6c0?q=80&w=800&auto=format&fit=crop",
     eligibility: "10th Pass (SSC)",
     ageLimit: "18 – 23 years",
     prerequisites: [
@@ -129,6 +134,7 @@ export const courseDetails: CourseDetail[] = [
     mode: ["Residential", "Offline"],
     medium: ["Telugu", "English"],
     fee: "₹25,000 Residential • ₹18,000 Offline",
+    image: "https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=800&auto=format&fit=crop",
     eligibility: "10th/10+2 as per post (Army GD: 10th 45%, Navy SSR: 10+2 PCM 50%)",
     ageLimit: "17.5 – 21 years (Army GD), 17-20 (Navy/Airforce)",
     prerequisites: [
@@ -155,6 +161,7 @@ export const courseDetails: CourseDetail[] = [
     mode: ["Offline", "Online"],
     medium: ["English", "Telugu"],
     fee: "₹65,000 Foundation • ₹25,000 Test Series",
+    image: "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?q=80&w=800&auto=format&fit=crop",
     eligibility: "Graduation in any discipline",
     ageLimit: "21 – 32 years (Gen), +5 SC/ST, +3 OBC",
     prerequisites: [
@@ -182,6 +189,7 @@ export const courseDetails: CourseDetail[] = [
     mode: ["Online"],
     medium: ["Telugu", "English"],
     fee: "60% of Offline — e.g., SI Online ₹18,000",
+    image: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=800&auto=format&fit=crop",
     eligibility: "Same as chosen course (10th/Intermediate/Graduation)",
     ageLimit: "Same as course",
     prerequisites: [

@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   if (auth.error) return auth.error;
 
   const body = await req.json();
-  const { admissionId, amount, course, mode } = body;
+  const { admissionId, amount } = body;
 
   if (!admissionId || !amount) {
     return NextResponse.json({ error: "admissionId and amount required" }, { status: 400 });
@@ -25,19 +25,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
+  // Server-side amount validation: must match admission balance or fee
+  const expected = admission.balanceDue ?? admission.totalFee ?? admission.amount ?? 0;
+  const reqAmount = Math.round(Number(amount));
+  if (!Number.isFinite(reqAmount) || reqAmount <= 0) return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
+  // Allow paying any positive amount up to balance, but not exceeding by more than 0
+  if (expected > 0 && reqAmount > expected) return NextResponse.json({ error: `Amount exceeds balance ₹${expected.toLocaleString("en-IN")}` }, { status: 400 });
+  if (process.env.NODE_ENV === "production" && isDummyKey) {
+    return NextResponse.json({ error: "Payments not configured — dummy keys in production" }, { status: 500 });
+  }
+
   let order: { id: string; amount: number; currency: string } | null = null;
 
   if (isDummyKey) {
+    if (process.env.NODE_ENV === "production") return NextResponse.json({ error: "Dummy keys not allowed in production" }, { status: 500 });
     // Mock order for development with dummy keys
     order = {
       id: `order_mock_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      amount: Number(amount) * 100,
+      amount: reqAmount * 100,
       currency: "INR",
     };
   } else {
     try {
       const receipt = `adm_${admissionId}_${Date.now()}`;
-      const razorpayOrder = await createOrder(Number(amount), "INR", receipt, {
+      const razorpayOrder = await createOrder(reqAmount, "INR", receipt, {
         admissionId,
         course: admission.course,
         mode: admission.mode,
@@ -63,7 +74,7 @@ export async function POST(req: NextRequest) {
       course: admission.course,
       medium: admission.medium,
       mode: admission.mode,
-      amount: Number(amount),
+      amount: reqAmount,
       paidAmount: 0,
       paymentMethod: "razorpay",
       transactionId: order.id,

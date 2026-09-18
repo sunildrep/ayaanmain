@@ -38,14 +38,16 @@ export async function POST(req: NextRequest) {
   const expenseTitle = String(expense || title || "").trim();
   if (!expenseTitle || amount === undefined) return NextResponse.json({ error: "expense and amount required" }, { status: 400 });
 
-  // Determine status: if super_admin creates, auto-approved; otherwise pending for approval
+  // Determine status: client cannot force approved — only super_admin may set approved
   const isSuper = auth.session.role === "super_admin";
-  const finalStatus = status ? String(status) : isSuper ? "approved" : "pending";
+  const finalStatus = isSuper ? (status ? String(status) : "approved") : "pending";
 
+  const amt = Number(amount);
+  if (!Number.isFinite(amt) || amt <= 0 || amt > 1e8) return NextResponse.json({ error: "amount must be positive (1 - 100000000)" }, { status: 400 });
   const data: any = {
     title: expenseTitle,
     category: String(category || "General"),
-    amount: Number(amount),
+    amount: Math.round(amt),
     paidBy: paidBy ? String(paidBy).trim() : null,
     paymentMethod: ["cash", "UPI", "upi", "bank"].includes(String(paymentMethod || "").toLowerCase()) ? String(paymentMethod).toLowerCase() : "cash",
     expenseDate: expenseDate ? new Date(expenseDate) : new Date(),
@@ -58,7 +60,12 @@ export async function POST(req: NextRequest) {
   if (id) {
     const existing = await prisma.expense.findUnique({ where: { id } });
     if (existing) {
-      // Only super_admin can edit approved, anyone can edit pending own
+      // Enforce ownership for non-super: can only edit own pending
+      if (!isSuper) {
+        if (existing.status !== "pending" || existing.requestedBy !== auth.session.username) {
+          return NextResponse.json({ error: "Can only edit own pending expenses" }, { status: 403 });
+        }
+      }
       const updated = await prisma.expense.update({
         where: { id },
         data: { ...data, approvedBy: isSuper && finalStatus === "approved" ? auth.session.username : existing.approvedBy },

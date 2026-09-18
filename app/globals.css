@@ -45,7 +45,7 @@ body {
 }
 .scrollbar-none::-webkit-scrollbar { display: none; }
 
-/* ===== ANIMATIONS ===== */
+/* ===== ANIMATIONS (only used) ===== */
 @keyframes float-slow {
   0%, 100% { transform: translateY(0) translateX(0); }
   25% { transform: translateY(-20px) translateX(10px); }
@@ -57,89 +57,6 @@ body {
   25% { transform: translateY(15px) translateX(-8px); }
   50% { transform: translateY(5px) translateX(12px); }
   75% { transform: translateY(20px) translateX(-3px); }
-}
-@keyframes pulse-slow {
-  0%, 100% { opacity: 0.3; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(1.05); }
-}
-@keyframes rotate-slow {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-@keyframes slide-up-fade {
-  0% { opacity: 0; transform: translateY(30px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-@keyframes slide-in-left {
-  0% { opacity: 0; transform: translateX(-40px); }
-  100% { opacity: 1; transform: translateX(0); }
-}
-@keyframes slide-in-right {
-  0% { opacity: 0; transform: translateX(40px); }
-  100% { opacity: 1; transform: translateX(0); }
-}
-@keyframes badge-pop {
-  0% { transform: scale(0.8); opacity: 0; }
-  50% { transform: scale(1.1); }
-  100% { transform: scale(1); opacity: 1; }
-}
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-@keyframes march {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100vw); }
-}
-@keyframes salute {
-  0%, 100% { transform: rotate(-15deg); }
-  50% { transform: rotate(15deg); }
-}
-@keyframes parachute-float {
-  0%, 100% { transform: translateY(0) rotate(-2deg); }
-  50% { transform: translateY(-15px) rotate(2deg); }
-}
-@keyframes radar-sweep {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* Animation utilities */
-.animate-float-slow { animation: float-slow 8s ease-in-out infinite; }
-.animate-float-reverse { animation: float-reverse 10s ease-in-out infinite; }
-.animate-pulse-slow { animation: pulse-slow 4s ease-in-out infinite; }
-.animate-rotate-slow { animation: rotate-slow 20s linear infinite; }
-.animate-slide-up-fade { animation: slide-up-fade 0.8s ease-out forwards; }
-.animate-slide-in-left { animation: slide-in-left 0.6s ease-out forwards; }
-.animate-slide-in-right { animation: slide-in-right 0.6s ease-out forwards; }
-.animate-badge-pop { animation: badge-pop 0.5s ease-out forwards; }
-.animate-shimmer { animation: shimmer 2s linear infinite; background-size: 200% 100%; }
-.animate-march { animation: march 30s linear infinite; }
-.animate-salute { animation: salute 2s ease-in-out infinite; }
-.animate-parachute { animation: parachute-float 6s ease-in-out infinite; }
-.animate-radar { animation: radar-sweep 4s linear infinite; }
-
-/* Delay utilities */
-.delay-100 { animation-delay: 100ms; }
-.delay-200 { animation-delay: 200ms; }
-.delay-300 { animation-delay: 300ms; }
-.delay-400 { animation-delay: 400ms; }
-.delay-500 { animation-delay: 500ms; }
-.delay-700 { animation-delay: 700ms; }
-.delay-1000 { animation-delay: 1000ms; }
-.delay-1500 { animation-delay: 1500ms; }
-.delay-2000 { animation-delay: 2000ms; }
-.delay-3000 { animation-delay: 3000ms; }
-
-/* Scroll reveal */
-.reveal-on-scroll {
-  opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
-}
-.reveal-on-scroll.visible {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 /* Decorative SVG silhouettes */
@@ -162,44 +79,3 @@ body {
   @apply absolute bottom-0 left-0 right-0 h-16 pointer-events-none overflow-hidden;
 }
 .section-wave svg { @apply w-full h-full; }
-
-/* Floating badge */
-.floating-badge {
-  @apply absolute px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg animate-float-slow;
-}
-
-/* Marching figures */
-.marching-container {
-  @apply absolute bottom-0 left-0 right-0 h-20 pointer-events-none overflow-hidden;
-}
-.marching-figure {
-  @apply absolute bottom-0 animate-march;
-}
-
-/* Saluting figure */
-.salute-figure {
-  @apply animate-salute origin-top;
-}
-
-/* Parachute */
-.parachute-figure {
-  @apply animate-parachute;
-}
-
-/* Radar sweep */
-.radar-sweep {
-  @apply animate-radar origin-center;
-}
-
-/* Staggered entrance for grids */
-.stagger-children > * {
-  opacity: 0;
-  transform: translateY(20px);
-  animation: slide-up-fade 0.6s ease-out forwards;
-}
-.stagger-children > *:nth-child(1) { animation-delay: 100ms; }
-.stagger-children > *:nth-child(2) { animation-delay: 200ms; }
-.stagger-children > *:nth-child(3) { animation-delay: 300ms; }
-.stagger-children > *:nth-child(4) { animation-delay: 400ms; }
-.stagger-children > *:nth-child(5) { animation-delay: 500ms; }
-.stagger-children > *:nth-child(6) { animation-delay: 600ms; }

@@ -1,6 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { AYAAN_APP_URL, AYAAN_PRO_FITNESS_APP_URL } from "@/lib/appConfig";
+import { DUMMY } from "@/lib/dummyImages";
 import FloatingParticles, { SectionDivider } from "@/components/deco/AnimatedElements";
 import { PoliceSilhouetteLarge } from "@/components/deco/PoliceSilhouette";
 import { ArmySilhouetteLarge } from "@/components/deco/ArmySilhouette";
@@ -8,13 +10,13 @@ import { GovtSilhouetteLarge } from "@/components/deco/GovtSilhouette";
 import HeroCarousel from "@/components/HeroCarousel";
 
 const coursesData = [
-  { id: 1, title: "Sub-Inspector (SI)", tag: "SI", meta: "3 Months • Daily + Weekly Tests", langs: ["Telugu", "English"], desc: "Complete syllabus + practice tests as final model.", points: ["1600m & events", "Weekly grands + explanation", "Bilingual batches"], popular: true },
-  { id: 2, title: "Constable", tag: "CONSTABLE", meta: "Most Demanded • Bilingual", langs: ["Telugu", "English"], desc: "Telugu/English separate batches, daily doubts.", points: ["Track + Strength", "Daily explanations", "95% selections"], popular: true },
-  { id: 3, title: "Groups — 1 / 2 / 3 / 4", tag: "GROUPS", meta: "State Services", langs: ["Telugu", "English"], desc: "Updated content + current affairs focus.", points: ["Grand tests & analysis", "Paper discussions", "Interview guidance"], popular: false },
-  { id: 4, title: "SSC GD", tag: "SSC", meta: "Central Armed Forces", langs: ["English"], desc: "Central forces — written + physical.", points: ["Hindi/English support", "Full mocks", "Physical at L1-L3"], popular: false },
-  { id: 5, title: "Army / Navy / Airforce", tag: "DEFENCE", meta: "Defence Entry", langs: ["Telugu", "English"], desc: "Written, medical, physical guidance.", points: ["Ground practice 3 levels", "Medical tips", "3000+ placed"], popular: false },
-  { id: 6, title: "UPSC Civil Services", tag: "UPSC", meta: "Prelims + Mains + Interview", langs: ["English", "Telugu"], desc: "GS Paper 1-4, Essay, CSAT, Optional subjects. Daily answer writing.", points: ["NCERT foundation + Standard books", "Current affairs daily", "Mock interviews with ex-bureaucrats", "Test series with explanation"], popular: true },
-  { id: 7, title: "Online Batches", tag: "ONLINE", meta: "Live + Recorded", langs: ["Telugu", "English"], desc: "Forward/reverse unlimited, offline download.", points: ["Same offline faculty", "Unlimited rewatch", "Since 2018"], popular: false },
+  { id: 1, title: "Sub-Inspector (SI)", tag: "SI", meta: "3 Months • Daily + Weekly Tests", langs: ["Telugu", "English"], desc: "Complete syllabus + practice tests as final model.", points: ["1600m & events", "Weekly grands + explanation", "Bilingual batches"], popular: true, image: DUMMY.course.si },
+  { id: 2, title: "Constable", tag: "CONSTABLE", meta: "Most Demanded • Bilingual", langs: ["Telugu", "English"], desc: "Telugu/English separate batches, daily doubts.", points: ["Track + Strength", "Daily explanations", "95% selections"], popular: true, image: DUMMY.course.constable },
+  { id: 3, title: "Groups — 1 / 2 / 3 / 4", tag: "GROUPS", meta: "State Services", langs: ["Telugu", "English"], desc: "Updated content + current affairs focus.", points: ["Grand tests & analysis", "Paper discussions", "Interview guidance"], popular: false, image: DUMMY.course.groups },
+  { id: 4, title: "SSC GD", tag: "SSC", meta: "Central Armed Forces", langs: ["English"], desc: "Central forces — written + physical.", points: ["Hindi/English support", "Full mocks", "Physical at L1-L3"], popular: false, image: DUMMY.course["ssc-gd"] },
+  { id: 5, title: "Army / Navy / Airforce", tag: "DEFENCE", meta: "Defence Entry", langs: ["Telugu", "English"], desc: "Written, medical, physical guidance.", points: ["Ground practice 3 levels", "Medical tips", "3000+ placed"], popular: false, image: DUMMY.course.army },
+  { id: 6, title: "UPSC Civil Services", tag: "UPSC", meta: "Prelims + Mains + Interview", langs: ["English", "Telugu"], desc: "GS Paper 1-4, Essay, CSAT, Optional subjects. Daily answer writing.", points: ["NCERT foundation + Standard books", "Current affairs daily", "Mock interviews with ex-bureaucrats", "Test series with explanation"], popular: true, image: DUMMY.course.upsc },
+  { id: 7, title: "Online Batches", tag: "ONLINE", meta: "Live + Recorded", langs: ["Telugu", "English"], desc: "Forward/reverse unlimited, offline download.", points: ["Same offline faculty", "Unlimited rewatch", "Since 2018"], popular: false, image: DUMMY.course.online },
 ];
 
 const quizQs = [
@@ -275,7 +277,7 @@ export default function Home() {
         <div className="absolute -top-10 -right-10 opacity-10 hidden lg:block pointer-events-none"><GovtSilhouetteLarge color="#ffffff" /></div>
         <div className="rounded-3xl bg-navy-900 text-white p-6 lg:p-8 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
           <div className="flex gap-4"><div className="hidden sm:grid w-12 h-12 rounded-2xl bg-white/10 border border-white/20 place-items-center">◍</div><div><div className="text-sm tracking-widest font-semibold text-sky-300">GET THE APP • 50K+ DOWNLOADS</div><div className="font-display font-bold text-xl lg:text-2xl">Your preparation, in your pocket.</div><div className="text-white/70 text-sm mt-1">Ayaan Institutions • Pro Fitness — offline download, unlimited rewatch.</div></div></div>
-          <div className="flex flex-wrap gap-3 w-full lg:w-auto"><a href="https://play.google.com/store/apps/details?id=co.classplus.ayaan" target="_blank" className="flex-1 lg:flex-none px-6 py-3 rounded-full bg-white text-navy-900 text-sm font-semibold grid place-items-center hover:bg-slate-100">Download Institutions</a><a href="https://play.google.com/store/apps/details?id=com.user.ayaanprofitness" target="_blank" className="flex-1 lg:flex-none px-6 py-3 rounded-full bg-white/10 border border-white/20 text-white text-sm font-semibold grid place-items-center hover:bg-white/15">Pro Fitness App</a></div>
+          <div className="flex flex-wrap gap-3 w-full lg:w-auto"><a href={AYAAN_APP_URL} target="_blank" className="flex-1 lg:flex-none px-6 py-3 rounded-full bg-white text-navy-900 text-sm font-semibold grid place-items-center hover:bg-slate-100">Download Institutions</a><a href={AYAAN_PRO_FITNESS_APP_URL} target="_blank" className="flex-1 lg:flex-none px-6 py-3 rounded-full bg-white/10 border border-white/20 text-white text-sm font-semibold grid place-items-center hover:bg-white/15">Pro Fitness App</a></div>
         </div>
       </section>
 

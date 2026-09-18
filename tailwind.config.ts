@@ -9,16 +9,9 @@ const config: Config = {
     extend: {
       colors: {
         navy: {
-          50: '#f0f4f8',
-          100: '#d9e2ec',
-          700: '#1a365d',
           800: '#0f2447',
           900: '#0b1d3a',
-          950: '#070f1f',
         },
-        ink: '#0f172a',
-        muted: '#64748b',
-        accent: '#0ea5e9',
         amber: '#f59e0b',
       },
       fontFamily: {

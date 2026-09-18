@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { prisma } from "@/lib/prisma";
+import { rateLimit, getClientIp } from "@/lib/rateLimit";
 
 // Secured layer: only allow sunil@drep.in for now (as per request)
 const ALLOWED_ADMIN_EMAIL = "sunil@drep.in";
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  let rl = rateLimit(`admin_send_otp:${ip}`, 3, 60 * 60 * 1000);
+  if (!rl.allowed) return NextResponse.json({ error: "Too many OTP requests — try again later" }, { status: 429, headers: { "Retry-After": String(Math.ceil(rl.resetMs / 1000)) } });
   const { email } = await req.json();
   const cleanEmail = String(email || "").trim().toLowerCase();
+  rl = rateLimit(`admin_send_otp:${cleanEmail}`, 3, 60 * 60 * 1000);
+  if (!rl.allowed) return NextResponse.json({ error: "Too many OTP requests for this email" }, { status: 429 });
 
   if (!cleanEmail || !cleanEmail.includes("@")) {
     return NextResponse.json({ error: "Valid email required" }, { status: 400 });

@@ -1,22 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
-
-const FALLBACK: Record<string, Record<string, number>> = {
-  SI: { Residential: 35000, Offline: 25000, Online: 15000 },
-  Constable: { Residential: 28000, Offline: 18000, Online: 10800 },
-  Groups: { Residential: 32000, Offline: 22000, Online: 13200 },
-  "SSC GD": { Residential: 25000, Offline: 15000, Online: 9000 },
-  Defence: { Residential: 30000, Offline: 20000, Online: 12000 },
-  Army: { Residential: 30000, Offline: 20000, Online: 12000 },
-  UPSC: { Residential: 75000, Offline: 45000, Online: 27000 },
-};
+import { FALLBACK_FEE } from "@/lib/fees";
+import { audit } from "@/lib/identifiers";
 
 function fallbackList() {
   const list: any[] = [];
-  for (const course of Object.keys(FALLBACK)) {
-    for (const mode of Object.keys(FALLBACK[course])) {
-      list.push({ id: `${course}-${mode}---`, course, mode, duration: "", medium: "", branch: "", amount: FALLBACK[course][mode], _fallback: true });
+  for (const course of Object.keys(FALLBACK_FEE)) {
+    for (const mode of Object.keys(FALLBACK_FEE[course])) {
+      list.push({ id: `${course}-${mode}---`, course, mode, duration: "", medium: "", branch: "", amount: FALLBACK_FEE[course][mode], _fallback: true });
     }
   }
   return list;
@@ -65,6 +57,7 @@ export async function POST(req: NextRequest) {
       });
       results.push(rec);
     }
+    await audit("fee_config", "bulk", auth.session.username || auth.session.userId, "bulk_upsert", `upsert:${results.length} deleted:${deleted}`);
     return NextResponse.json({ ok: true, count: results.length, deleted, fees: results });
   }
 
@@ -77,6 +70,7 @@ export async function POST(req: NextRequest) {
   try {
     if (id) {
       const updated = await prisma.feeConfig.update({ where: { id }, data: { course: String(course), mode: String(mode), duration: dur, medium: med, branch: br, amount: amt } });
+      await audit("fee_config", updated.id, auth.session.username || auth.session.userId, "update", `${course}/${mode} ${amt}`);
       return NextResponse.json(updated);
     }
     const rec = await prisma.feeConfig.upsert({
@@ -84,6 +78,7 @@ export async function POST(req: NextRequest) {
       update: { amount: amt },
       create: { course: String(course), mode: String(mode), duration: dur, medium: med, branch: br, amount: amt },
     });
+    await audit("fee_config", rec.id, auth.session.username || auth.session.userId, "upsert", `${course}/${mode} ${amt}`);
     return NextResponse.json(rec);
   } catch (e: any) {
     if (e?.code === "P2002") return NextResponse.json({ error: "A fee already exists for this course + mode + duration + medium + branch" }, { status: 400 });
@@ -98,6 +93,7 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
   await prisma.feeConfig.delete({ where: { id } });
+  await audit("fee_config", id, auth.session.username || auth.session.userId, "delete", "Fee deleted");
   return NextResponse.json({ ok: true });
 }
 

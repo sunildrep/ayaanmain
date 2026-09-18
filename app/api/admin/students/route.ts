@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   if (action === "create") {
     if (!name || !email || !phone || !password) return NextResponse.json({ error: "name, email, phone, password required" }, { status: 400 });
     if (!/^[0-9]{10}$/.test(String(phone))) return NextResponse.json({ error: "phone must be 10 digits" }, { status: 400 });
-    if (password.length < 6) return NextResponse.json({ error: "password min 6 chars" }, { status: 400 });
+    if (password.length < 8) return NextResponse.json({ error: "password min 6 chars" }, { status: 400 });
     const exists = await prisma.user.findUnique({ where: { email: String(email).toLowerCase() } });
     if (exists) return NextResponse.json({ error: "Email already exists" }, { status: 400 });
 
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
       await supabaseAdmin.auth.admin.updateUserById(user.supabaseId, { ban_duration: updated.isActive ? "none" : "876000h" } as any);
     }
   } else if (action === "resetPassword") {
-    if (!password || password.length < 6) return NextResponse.json({ error: "Password min 6 chars" }, { status: 400 });
+    if (!password || password.length < 8) return NextResponse.json({ error: "Password min 6 chars" }, { status: 400 });
     if (user.supabaseId) {
       const { error } = await supabaseAdmin.auth.admin.updateUserById(user.supabaseId, { password: String(password) });
       if (error) return NextResponse.json({ error: `Supabase error: ${error.message}` }, { status: 400 });

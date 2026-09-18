@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   const pw = String(newPassword || "").trim();
 
   if (!cleanEmail || !code) return NextResponse.json({ error: "Email and OTP required" }, { status: 400 });
-  if (!pw || pw.length < 6) return NextResponse.json({ error: "New password min 6 chars required" }, { status: 400 });
+  if (!pw || pw.length < 8) return NextResponse.json({ error: "New password min 6 chars required" }, { status: 400 });
 
   // Verify OTP via Supabase
   const { data, error } = await supabase.auth.verifyOtp({
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (verifyError || !userId) {
-    return NextResponse.json({ error: `Invalid or expired OTP: ${verifyError?.message || "verify failed"}` }, { status: 400 });
+    return NextResponse.json({ error: "Invalid or expired OTP" }, { status: 400 });
   }
 
   // Update password via admin (requires service role)
@@ -45,17 +45,16 @@ export async function POST(req: NextRequest) {
   });
 
   if (updateError) {
-    return NextResponse.json({ error: `Failed to update password: ${updateError.message}` }, { status: 400 });
+    return NextResponse.json({ error: "Failed to update password" }, { status: 400 });
   }
 
-  // Also update prisma if needed (for linking, but password is Supabase-only now)
-  // Ensure supabaseId is linked
-  const admin = await prisma.admin.findUnique({ where: { email: cleanEmail } });
-  if (admin && !admin.supabaseId) {
-    await prisma.admin.update({ where: { id: admin.id }, data: { supabaseId: userId } });
-  }
+  // Only student flow allowed here — block admin resets via generic endpoint
+  const adminCheck = await prisma.admin.findUnique({ where: { email: cleanEmail } });
+  if (adminCheck) return NextResponse.json({ error: "Admin password reset must use admin OTP flow" }, { status: 403 });
   const user = await prisma.user.findUnique({ where: { email: cleanEmail } });
-  if (user && !user.supabaseId) {
+  if (!user) return NextResponse.json({ error: "Account not found" }, { status: 404 });
+  if (user.isActive === false) return NextResponse.json({ error: "Account deactivated" }, { status: 403 });
+  if (!user.supabaseId) {
     await prisma.user.update({ where: { id: user.id }, data: { supabaseId: userId } });
   }
 

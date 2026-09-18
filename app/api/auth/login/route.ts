@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { supabase } from "@/lib/supabase";
 import crypto from "crypto";
+import { rateLimit, getClientIp } from "@/lib/rateLimit";
+import { hashToken } from "@/lib/auth-helpers";
 
 const SESSION_EXPIRY_DAYS = 7;
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  const rl = rateLimit(`auth_login:${ip}`, 5, 10 * 60 * 1000);
+  if (!rl.allowed) return NextResponse.json({ error: "Too many attempts — try again later" }, { status: 429, headers: { "Retry-After": String(Math.ceil(rl.resetMs / 1000)) } });
   const { email, phone, password } = await req.json();
   const identifier = (email || phone || "").toString().trim().toLowerCase();
   if (!identifier || !password) return NextResponse.json({ error: "email/phone and password required" }, { status: 400 });
@@ -36,7 +41,7 @@ export async function POST(req: NextRequest) {
   }
   if (!user) {
     await supabase.auth.signOut();
-    return NextResponse.json({ error: "Account not found" }, { status: 404 });
+    return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
   if (!user.isActive) {
     await supabase.auth.signOut();
@@ -48,10 +53,15 @@ export async function POST(req: NextRequest) {
     await prisma.user.update({ where: { id: user.id }, data: { supabaseId: data.user.id } });
   }
 
-  // Create our session (keep existing session logic, but auth source is Supabase)
+  // Create our session
   const token = crypto.randomBytes(32).toString("hex");
+  const hashed = hashToken(token);
   const expiresAt = new Date(Date.now() + SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-  await prisma.session.create({ data: { token, userId: user.id, role: "student", username: user.email, name: user.name, expiresAt } });
+  try {
+    const existing = await prisma.session.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } });
+    if (existing.length >= 3) await prisma.session.deleteMany({ where: { id: { in: existing.slice(0, existing.length - 2).map((s) => s.id) } } });
+  } catch {}
+  await prisma.session.create({ data: { token: hashed, userId: user.id, role: "student", username: user.email, name: user.name, expiresAt } });
 
   await supabase.auth.signOut();
 
@@ -68,18 +78,23 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const token = req.cookies.get("ayaan_session")?.value;
-  if (token) await prisma.session.deleteMany({ where: { token } });
+  if (token) {
+    const hashed = hashToken(token);
+    try { await prisma.session.delete({ where: { token: hashed } }); } catch { try { await prisma.session.deleteMany({ where: { token } }); } catch {} }
+  }
   const res = NextResponse.json({ ok: true });
-  res.cookies.set("ayaan_session", "", { path: "/", maxAge: 0 });
+  res.cookies.set("ayaan_session", "", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/", maxAge: 0 });
   return res;
 }
 
 export async function GET(req: NextRequest) {
   const token = req.cookies.get("ayaan_session")?.value;
   if (!token) return NextResponse.json({ authenticated: false }, { headers: { "Cache-Control": "no-store" } });
-  const session = await prisma.session.findUnique({ where: { token } });
+  const hashed = hashToken(token);
+  let session: any = await prisma.session.findUnique({ where: { token: hashed } });
+  if (!session) session = await prisma.session.findUnique({ where: { token } });
   if (!session || session.expiresAt < new Date() || session.role !== "student") {
-    if (session) await prisma.session.delete({ where: { token } });
+    if (session) try { await prisma.session.delete({ where: { token: hashed } }); } catch { try { await prisma.session.delete({ where: { token } }); } catch {} }
     return NextResponse.json({ authenticated: false }, { headers: { "Cache-Control": "no-store" } });
   }
   const user = await prisma.user.findUnique({ where: { id: session.userId } });

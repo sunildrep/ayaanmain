@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { requireAdminSession } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -17,8 +18,8 @@ export async function POST(req: NextRequest) {
   let createdUserId: string | null = null;
   let generatedPassword: string | null = null;
   if (!user && (createStudent || studentId === "new")) {
-    const pw = String(password || "").trim() || `Ayaan@${String(phone).slice(-4)}`;
-    if (pw.length < 6) return NextResponse.json({ error: "Password min 6 chars for new student" }, { status: 400 });
+    const pw = String(password || "").trim() || `Ayaan@${crypto.randomBytes(3).toString("hex").slice(0, 6).toUpperCase()}`;
+    if (pw.length < 8) return NextResponse.json({ error: "Password min 6 chars for new student" }, { status: 400 });
 
     // Create Supabase Auth user
     const { data: supaData, error: supaError } = await supabaseAdmin.auth.admin.createUser({

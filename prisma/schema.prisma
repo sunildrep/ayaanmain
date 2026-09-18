@@ -11,15 +11,18 @@ datasource db {
 }
 
 model Admin {
-  id           String   @id @default(cuid())
-  username     String   @unique
-  email        String   @unique
-  supabaseId   String?  @unique
-  passwordHash String? // legacy - will be removed, use Supabase Auth only
-  role         String   // super_admin, finance, admissions
-  name         String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  username           String   @unique
+  email              String   @unique
+  supabaseId         String?  @unique
+  passwordHash       String? // legacy - will be removed, use Supabase Auth only
+  role               String   // super_admin, finance, admissions
+  name               String
+  mustChangePassword Boolean  @default(true)
+  permissions        String[] @default([]) // explicit tab ids; if empty => role defaults
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   @@map("admins")
 }
@@ -344,6 +347,7 @@ model Lead {
   employeeName String?   // assigned employee
   lastActionAt DateTime? // last action time
   dueDate      DateTime? // follow-up due date
+  admissionId  String?   @unique // linked admission when converted
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -527,6 +531,7 @@ model Course {
   highlights       String[]
   mediums          String[]
   modes            String[]
+  image            String? // course hero image — dummy seeded, replace via Admin
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   syllabus         SyllabusItem[]
@@ -556,4 +561,24 @@ model Branch {
   updatedAt DateTime @updatedAt
 
   @@map("branches")
+}
+
+model CarouselSlide {
+  id        String   @id @default(cuid())
+  image     String   // Supabase Storage public URL or external URL
+  badge     String   @default("")
+  title     String   @default("")
+  highlight String   @default("")
+  desc      String   @default("")
+  ctaLabel  String   @default("")
+  ctaHref   String   @default("")
+  cta2Label String? // optional second CTA
+  cta2Href  String?
+  accent    String   @default("from-sky-600 to-navy-900")
+  order     Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("carousel_slides")
 }

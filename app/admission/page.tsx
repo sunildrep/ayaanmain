@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { fallbackFee } from "@/lib/fees";
 
 type Batch = { id: string; name?: string; course: string; medium: string; mode: string; branch?: string; slot?: string; days?: string; startDate: string; endDate?: string; seats: number; filled: number; availableSeats?: number };
 type Duration = { id: string; name: string; months: number };
@@ -83,11 +84,7 @@ export default function AdmissionPage() {
       const hit = feeConfigs.find((f) => f.course === form.course && f.mode === form.mode && norm(f.duration) === d && norm(f.medium) === m && norm(f.branch) === b);
       if (hit) return hit.amount;
     }
-    const feeMap: Record<string, number> = { SI: 25000, Constable: 18000, Groups: 22000, "SSC GD": 15000, Defence: 20000, Army: 20000, UPSC: 45000 };
-    let base = feeMap[form.course] || 15000;
-    if (form.mode === "Residential") base += 10000;
-    if (form.mode === "Online") base = Math.round(base * 0.6);
-    return base;
+    return fallbackFee(form.course, form.mode);
   }, [feeConfigs, form.course, form.mode, form.medium, form.branch, selDuration]);
 
   const addonFees = useMemo(() => addonIds.reduce((s, id) => s + (addons.find((a) => a.id === id)?.fee || 0), 0), [addonIds, addons]);

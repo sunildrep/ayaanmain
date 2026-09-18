@@ -3,16 +3,9 @@ import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { uploadDataUrl } from "@/lib/storage";
 import { newApplicationId, addMonths, audit } from "@/lib/identifiers";
-
-const FALLBACK_FEE: Record<string, Record<string, number>> = {
-  SI: { Residential: 35000, Offline: 25000, Online: 15000 },
-  Constable: { Residential: 28000, Offline: 18000, Online: 10800 },
-  Groups: { Residential: 32000, Offline: 22000, Online: 13200 },
-  "SSC GD": { Residential: 25000, Offline: 15000, Online: 9000 },
-  Defence: { Residential: 30000, Offline: 20000, Online: 12000 },
-  Army: { Residential: 30000, Offline: 20000, Online: 12000 },
-  UPSC: { Residential: 75000, Offline: 45000, Online: 27000 },
-};
+import { fallbackFee } from "@/lib/fees";
+import { isEmail, isPhone, sanitizeText } from "@/lib/validators";
+import { rateLimit, getClientIp } from "@/lib/rateLimit";
 async function getFee(course: string, mode: string, duration?: string, medium?: string, branch?: string) {
   try {
     // Lookup order: exact → peel branch → peel medium → peel duration → Base ("","","") → hardcoded fallback
@@ -27,22 +20,26 @@ async function getFee(course: string, mode: string, duration?: string, medium?: 
       if (hit) return hit.amount;
     }
   } catch {}
-  if (FALLBACK_FEE[course]?.[mode] !== undefined) return FALLBACK_FEE[course][mode];
-  const feeMap: Record<string, number> = { SI: 25000, Constable: 18000, Groups: 22000, "SSC GD": 15000, Defence: 20000, Army: 20000, UPSC: 45000 };
-  let base = feeMap[course] || 15000;
-  if (mode === "Residential") base += 10000;
-  if (mode === "Online") base = Math.round(base * 0.6);
-  return base;
+  return fallbackFee(course, mode);
 }
 
 const SPLIT_METHODS = ["cash", "upi", "bank", "razorpay"];
 
 export async function POST(req: NextRequest) {
+  // Rate limit public admissions: 5 per 15 min per IP
+  const ip = getClientIp(req);
+  const rl = rateLimit(`admissions:${ip}`, 5, 15 * 60 * 1000);
+  if (!rl.allowed) return NextResponse.json({ error: "Too many applications — try again later" }, { status: 429, headers: { "Retry-After": String(Math.ceil(rl.resetMs / 1000)) } });
+
   const body = await req.json();
+  // Honeypot for bots — if filled, silently reject as success to avoid probing
+  if (body.website || body.honeypot || body.url) return NextResponse.json({ ok: true, id: "HP-" + Date.now(), applicationId: "HP", status: "pending" });
+
   const { name, fatherName, phone, email, address, reference, branch, course, courseType, medium, mode, batchId, durationId, addonIds, photo, payments } = body;
 
   if (!name || !fatherName || !phone || !email || !address || !branch || !course) return NextResponse.json({ error: "name, fatherName, phone, email, address, branch, course required" }, { status: 400 });
-  if (!/^[0-9]{10}$/.test(String(phone).trim())) return NextResponse.json({ error: "phone must be 10 digits" }, { status: 400 });
+  if (!isPhone(String(phone))) return NextResponse.json({ error: "phone must be 10 digits" }, { status: 400 });
+  if (!isEmail(String(email))) return NextResponse.json({ error: "Valid email required" }, { status: 400 });
 
   // Duration (snapshot)
   let durationName = "3 Months";
@@ -136,17 +133,17 @@ export async function POST(req: NextRequest) {
       id: `ADM-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
       applicationId,
       clarificationToken,
-      name: String(name).trim(),
-      fatherName: String(fatherName).trim(),
+      name: sanitizeText(String(name), 100),
+      fatherName: sanitizeText(String(fatherName), 100),
       phone: String(phone).trim(),
       email: String(email).trim().toLowerCase(),
-      address: String(address).trim(),
-      reference: String(reference || "").trim(),
-      branch: String(branch).trim(),
-      course: String(course),
-      courseType: String(courseType || "Regular"),
-      medium: String(medium || "Telugu"),
-      mode: String(mode || "Residential"),
+      address: sanitizeText(String(address), 500),
+      reference: sanitizeText(String(reference || ""), 100),
+      branch: sanitizeText(String(branch), 100),
+      course: sanitizeText(String(course), 50),
+      courseType: sanitizeText(String(courseType || "Regular"), 20),
+      medium: sanitizeText(String(medium || "Telugu"), 20),
+      mode: sanitizeText(String(mode || "Residential"), 20),
       batchId: batch ? batch.id : null,
       batchName: batch ? (batch.name || `${batch.course} • ${batch.slot || batch.mode}`) : null,
       durationId: durationId ? String(durationId) : null,

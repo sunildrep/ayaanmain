@@ -20,6 +20,7 @@ export async function GET() {
       desc: c.desc,
       duration: c.duration,
       fee: c.fee,
+      image: (c as any).image || null,
       eligibility: c.eligibility,
       ageLimit: c.ageLimit,
       notificationDate: c.notificationDate,

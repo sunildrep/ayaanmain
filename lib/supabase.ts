@@ -4,8 +4,18 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-// Client for browser / anon operations (signIn, signUp)
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+// Critical guard: never ship service_role to the browser in production
+if (process.env.NODE_ENV === "production" && supabaseAnonKey === supabaseServiceKey) {
+  throw new Error(
+    "CRITICAL: NEXT_PUBLIC_SUPABASE_ANON_KEY matches SUPABASE_SERVICE_ROLE_KEY — service_role would be exposed to browsers. Set the correct anon public key from Supabase Dashboard → Project Settings → API."
+  );
+}
+
+// Server-side auth client — uses service_role (server-only, never bundled to client)
+// NOTE: anon placeholder in .env is not yet set; service_role is required for signInWithPassword server-side
+// Guard above ensures prod anon !== service; once anon is set, switch this to anonKey for RLS
+const serverAuthKey = supabaseServiceKey;
+export const supabase = createClient(supabaseUrl, serverAuthKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
@@ -25,11 +35,4 @@ export function usernameToEmail(username: string): string {
   // if already email, return as is
   if (username.includes("@")) return username.toLowerCase();
   return `${username}@ayaaninstitute.in`;
-}
-
-// Verify Supabase JWT and get user
-export async function verifySupabaseToken(accessToken: string) {
-  const { data, error } = await supabaseAdmin.auth.getUser(accessToken);
-  if (error || !data.user) return null;
-  return data.user;
 }

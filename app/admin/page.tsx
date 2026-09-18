@@ -3,12 +3,13 @@ import { useEffect, useState } from "react";
 import AuthForgotPassword from "@/components/AuthForgotPassword";
 import { DonutChart, GroupedBarChart, CHART_COLORS } from "@/components/Charts";
 import ReceiptView from "@/components/ReceiptView";
+import { FALLBACK_FEE as FEE_FALLBACK } from "@/lib/fees";
 
-type Tab = "dashboard" | "rag" | "batches" | "banner" | "admissions" | "payments" | "students" | "finance" | "leads" | "alumni" | "store" | "fees" | "expenses" | "orders" | "dues" | "masters";
+type Tab = "dashboard" | "rag" | "batches" | "banner" | "admissions" | "payments" | "students" | "finance" | "leads" | "alumni" | "store" | "fees" | "expenses" | "orders" | "dues" | "masters" | "admins" | "carousel";
 type Role = "super_admin" | "finance" | "admissions";
 
 const roleTabs: Record<Role, Tab[]> = {
-  super_admin: ["dashboard", "store", "orders", "alumni", "leads", "payments", "students", "finance", "dues", "expenses", "admissions", "rag", "batches", "masters", "banner", "fees"],
+  super_admin: ["dashboard", "store", "orders", "alumni", "leads", "payments", "students", "finance", "dues", "expenses", "admissions", "rag", "batches", "masters", "banner", "fees", "admins", "carousel"],
   finance: ["dashboard", "payments", "finance", "dues", "expenses", "orders", "fees"],
   admissions: ["dashboard", "admissions", "leads", "students", "alumni"],
 };
@@ -30,6 +31,8 @@ const allTabs: { id: Tab; label: string }[] = [
   { id: "masters", label: "Masters" },
   { id: "banner", label: "Banner" },
   { id: "fees", label: "Fee Config" },
+  { id: "admins", label: "Admins" },
+  { id: "carousel", label: "Carousel" },
 ];
 
 export default function AdminPage() {
@@ -47,6 +50,16 @@ export default function AdminPage() {
   const [otpSent, setOtpSent] = useState(false);
   const [otpLoading, setOtpLoading] = useState(false);
   const [newOrders, setNewOrders] = useState(0);
+  const [permissions, setPermissions] = useState<string[] | null>(null);
+  const [mustChange, setMustChange] = useState(false);
+  const [oldPass, setOldPass] = useState("");
+  const [newPass, setNewPass] = useState("");
+  const [confirmPass, setConfirmPass] = useState("");
+  const [changing, setChanging] = useState(false);
+  const [changeErr, setChangeErr] = useState("");
+  const [changeOk, setChangeOk] = useState("");
+
+  const allowedTabs = permissions && permissions.length > 0 ? (permissions as Tab[]) : (roleTabs[role] || roleTabs.super_admin);
 
   useEffect(() => {
     fetch("/api/admin/login")
@@ -55,9 +68,12 @@ export default function AdminPage() {
         setAuth(!!d.authenticated);
         if (d.role) setRole(d.role as Role);
         if (d.user) setAuthUser(d.user);
+        if (d.permissions) setPermissions(d.permissions);
+        else if (d.role) setPermissions(null);
+        if (d.mustChangePassword) setMustChange(true);
         if (d.authenticated && d.role) {
-          const allowed = roleTabs[d.role as Role] || roleTabs.super_admin;
-          if (!allowed.includes(tab)) setTab(allowed[0]);
+          const eff = d.permissions && d.permissions.length > 0 ? (d.permissions as Tab[]) : (roleTabs[d.role as Role] || roleTabs.super_admin);
+          if (!eff.includes(tab)) setTab(eff[0] || "dashboard");
         }
       })
       .catch(() => setAuth(false));
@@ -86,14 +102,20 @@ export default function AdminPage() {
       const newRole = (data.role as Role) || "super_admin";
       setRole(newRole);
       setAuthUser(data.name || user);
-      const allowed = roleTabs[newRole] || roleTabs.super_admin;
-      setTab(allowed[0]);
-    } else setLoginErr("Invalid username or password");
+      if (data.permissions) setPermissions(data.permissions);
+      else setPermissions(null);
+      if (data.mustChangePassword) setMustChange(true);
+      else setMustChange(false);
+      const eff = data.permissions && data.permissions.length > 0 ? (data.permissions as Tab[]) : (roleTabs[newRole] || roleTabs.super_admin);
+      setTab(eff[0] || "dashboard");
+    } else setLoginErr(data.error || "Invalid username or password");
   };
   const doLogout = async () => {
     await fetch("/api/admin/login", { method: "DELETE" });
     setAuth(false);
     setRole("super_admin");
+    setPermissions(null);
+    setMustChange(false);
   };
 
   const sendAdminOtp = async () => {
@@ -106,6 +128,24 @@ export default function AdminPage() {
     if (r.ok) { setOtpSent(true); setLoginErr(""); alert(d.message || "OTP sent to sunil@drep.in"); }
     else setLoginErr(d.error || "Failed to send OTP");
   };
+  const doAdminChange = async () => {
+    setChangeErr("");
+    setChangeOk("");
+    if (!oldPass || !newPass || !confirmPass) return setChangeErr("All fields required");
+    if (newPass.length < 6) return setChangeErr("New password min 6 chars");
+    if (newPass !== confirmPass) return setChangeErr("New passwords do not match");
+    if (oldPass === newPass) return setChangeErr("New password must differ");
+    setChanging(true);
+    const r = await fetch("/api/admin/change-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ oldPassword: oldPass, newPassword: newPass }) });
+    const d = await r.json().catch(() => ({}));
+    setChanging(false);
+    if (r.ok) {
+      setChangeOk("Password changed — you can now access the console");
+      setMustChange(false);
+      setOldPass(""); setNewPass(""); setConfirmPass("");
+    } else setChangeErr(d.error || "Failed to change password");
+  };
+
   const verifyAdminOtp = async () => {
     setLoginErr("");
     if (!otp.trim()) return setLoginErr("OTP required");
@@ -118,8 +158,11 @@ export default function AdminPage() {
       const newRole = (d.role as Role) || "super_admin";
       setRole(newRole);
       setAuthUser(d.name || otpEmail);
-      const allowed = roleTabs[newRole] || roleTabs.super_admin;
-      setTab(allowed[0]);
+      if (d.permissions) setPermissions(d.permissions);
+      else setPermissions(null);
+      if (d.mustChangePassword) setMustChange(true);
+      const eff = d.permissions && d.permissions.length > 0 ? (d.permissions as Tab[]) : (roleTabs[newRole] || roleTabs.super_admin);
+      setTab(eff[0] || "dashboard");
     } else setLoginErr(d.error || "Invalid OTP");
   };
 
@@ -175,8 +218,28 @@ export default function AdminPage() {
     );
   }
 
-  const allowed = roleTabs[role] || roleTabs.super_admin;
-  const visibleTabs = allTabs.filter((t) => allowed.includes(t.id));
+  const visibleTabs = allTabs.filter((t) => allowedTabs.includes(t.id));
+
+  if (mustChange) {
+    return (
+      <div className="min-h-screen bg-slate-50 grid place-items-center p-4">
+        <div className="card p-8 w-full max-w-md">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white grid place-items-center font-bold">!</div>
+          <h1 className="mt-4 font-display font-bold text-xl text-navy-900">Change Password Required</h1>
+          <p className="text-sm text-slate-500 mt-1">You must change your password on first login before accessing the console.</p>
+          <div className="mt-6 grid gap-3">
+            <input value={oldPass} onChange={(e) => setOldPass(e.target.value)} placeholder="Current / Temporary Password" type="password" className="px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
+            <input value={newPass} onChange={(e) => setNewPass(e.target.value)} placeholder="New Password (min 6 chars)" type="password" className="px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
+            <input value={confirmPass} onChange={(e) => setConfirmPass(e.target.value)} placeholder="Confirm New Password" type="password" onKeyDown={(e) => e.key === "Enter" && doAdminChange()} className="px-4 py-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
+            {changeErr && <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl">{changeErr}</div>}
+            {changeOk && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl">{changeOk}</div>}
+            <button onClick={doAdminChange} disabled={changing} className="btn-primary justify-center disabled:opacity-50">{changing ? "Updating…" : "Update Password & Continue →"}</button>
+            <button onClick={doLogout} className="text-xs text-slate-500 hover:underline text-center">Logout</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -205,9 +268,9 @@ export default function AdminPage() {
             </button>
           ))}
         </div>
-        {role !== "super_admin" && (
+        {allowedTabs.length < allTabs.length && (
           <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 pb-3">
-            <div className="text-xs px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800">Limited access — {role} can only manage: {allowed.join(", ")}</div>
+            <div className="text-xs px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800">Limited access — {role} ({allowedTabs.join(", ")}) {permissions && permissions.length > 0 ? "• custom permissions" : ""}</div>
           </div>
         )}
       </header>
@@ -229,6 +292,8 @@ export default function AdminPage() {
         {tab === "orders" && <OrdersTab />}
         {tab === "dues" && <DuesTab />}
         {tab === "masters" && <MastersTab />}
+        {tab === "admins" && <AdminsTab />}
+        {tab === "carousel" && <CarouselTab />}
       </main>
     </div>
   );
@@ -1432,7 +1497,7 @@ function BannerTab() {
     }
   };
 
-  const bg = data.type === "urgent" ? "bg-red-600" : data.type === "warning" ? "bg-amber-500" : data.type === "success" ? "bg-emerald-600" : "bg-navy-900";
+  const bg = data.type === "urgent" ? "bg-red-600" : data.type === "warning" ? "bg-[#f59e0b]" : data.type === "success" ? "bg-emerald-600" : "bg-navy-900";
 
   return (
     <div className="grid lg:grid-cols-12 gap-6">
@@ -1505,16 +1570,6 @@ function BannerTab() {
     </div>
   );
 }
-
-const FEE_FALLBACK: Record<string, Record<string, number>> = {
-  SI: { Residential: 35000, Offline: 25000, Online: 15000 },
-  Constable: { Residential: 28000, Offline: 18000, Online: 10800 },
-  Groups: { Residential: 32000, Offline: 22000, Online: 13200 },
-  "SSC GD": { Residential: 25000, Offline: 15000, Online: 9000 },
-  Defence: { Residential: 30000, Offline: 20000, Online: 12000 },
-  Army: { Residential: 30000, Offline: 20000, Online: 12000 },
-  UPSC: { Residential: 75000, Offline: 45000, Online: 27000 },
-};
 
 function FeeConfigTab() {
   const [fees, setFees] = useState<any[]>([]);
@@ -2624,6 +2679,427 @@ function OrdersTab() {
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+const ADMIN_TABS: { id: string; label: string; desc: string }[] = [
+  { id: "dashboard", label: "Dashboard", desc: "Overview & reports" },
+  { id: "store", label: "Store Stock", desc: "Inventory" },
+  { id: "orders", label: "Orders", desc: "Store orders & handover" },
+  { id: "alumni", label: "Alumni", desc: "Alumni stories" },
+  { id: "leads", label: "Leads", desc: "Enquiries" },
+  { id: "payments", label: "Payments", desc: "Student fee payments" },
+  { id: "students", label: "Students", desc: "Enrolled students" },
+  { id: "finance", label: "AR / AP", desc: "Receivables / Payables" },
+  { id: "dues", label: "Dues & Receipts", desc: "Installments & receipts" },
+  { id: "expenses", label: "Expense Tracker", desc: "Expenses & approvals" },
+  { id: "admissions", label: "Admissions", desc: "Applications & approvals" },
+  { id: "rag", label: "RAG", desc: "Chatbot knowledge" },
+  { id: "batches", label: "Batches", desc: "Course batches & capacity" },
+  { id: "masters", label: "Masters", desc: "Durations / Addons / Mediums / Branches" },
+  { id: "banner", label: "Banner", desc: "Top announcement" },
+  { id: "fees", label: "Fee Config", desc: "Fee per course×mode×duration×medium×branch" },
+  { id: "admins", label: "Admins", desc: "Manage admin users (super_admin only)" },
+  { id: "carousel", label: "Carousel", desc: "Home page carousel (super_admin only)" },
+];
+
+function AdminsTab() {
+  const [admins, setAdmins] = useState<any[]>([]);
+  const [q, setQ] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState<any | null>(null);
+  const [resetTarget, setResetTarget] = useState<any | null>(null);
+  const [resetPw, setResetPw] = useState("");
+  const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [form, setForm] = useState({ email: "", password: "", name: "", role: "admissions" as Role, permissions: [] as string[], isActive: true });
+
+  const load = () => {
+    fetch("/api/admin/users", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => Array.isArray(d) && setAdmins(d))
+      .catch(() => {});
+  };
+  useEffect(() => { load(); }, []);
+
+  const togglePerm = (perm: string, list: string[], setter: (v: string[]) => void) => {
+    if (list.includes(perm)) setter(list.filter((p) => p !== perm));
+    else setter([...list, perm]);
+  };
+
+  const create = async () => {
+    setMsg(null);
+    if (!form.email.trim() || !form.email.includes("@")) return setMsg({ type: "err", text: "Valid email required" });
+    if (!form.password || form.password.length < 6) return setMsg({ type: "err", text: "Password min 6 chars" });
+    if (!form.name.trim()) return setMsg({ type: "err", text: "Name required" });
+    const r = await fetch("/api/admin/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) {
+      setMsg({ type: "ok", text: `Created ${d.admin.email} — must change password on first login` });
+      setShowCreate(false);
+      setForm({ email: "", password: "", name: "", role: "admissions", permissions: [], isActive: true });
+      load();
+    } else setMsg({ type: "err", text: d.error || "Failed" });
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    const r = await fetch("/api/admin/users", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editing.id, name: editing.name, role: editing.role, permissions: editing.permissions, isActive: editing.isActive }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) {
+      setMsg({ type: "ok", text: "Updated" });
+      setEditing(null);
+      load();
+    } else setMsg({ type: "err", text: d.error || "Failed" });
+  };
+
+  const del = async (id: string, email: string) => {
+    if (!confirm(`Delete admin ${email}? This will also delete their Supabase auth and sessions.`)) return;
+    const r = await fetch(`/api/admin/users?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) { setMsg({ type: "ok", text: "Deleted" }); load(); }
+    else setMsg({ type: "err", text: d.error || "Failed" });
+  };
+
+  const reset = async () => {
+    if (!resetTarget) return;
+    if (!resetPw || resetPw.length < 6) return setMsg({ type: "err", text: "Password min 6 chars" });
+    const r = await fetch("/api/admin/users/reset-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: resetTarget.id, newPassword: resetPw }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) {
+      setMsg({ type: "ok", text: `Password reset for ${resetTarget.email} — they must change on next login` });
+      setResetTarget(null); setResetPw("");
+      load();
+    } else setMsg({ type: "err", text: d.error || "Failed" });
+  };
+
+  const filtered = admins.filter((a) => !q || `${a.name} ${a.email} ${a.role} ${a.username}`.toLowerCase().includes(q.toLowerCase()));
+
+  const roleBadge = (r: string) => r === "super_admin" ? "bg-navy-900 text-white border-navy-900" : r === "finance" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-sky-50 border-sky-200 text-sky-700";
+
+  return (
+    <div className="grid gap-4">
+      <div className="card p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-navy-900">Admins • {admins.length}</h2>
+          <p className="text-xs text-slate-500 mt-1">Create admins with email + password • they must change on first login • super_admin configures per-admin permissions • deactivating blocks login immediately</p>
+        </div>
+        <div className="flex gap-2">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, email, role…" className="px-3 py-2 rounded-full border border-slate-200 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-sky-500" />
+          <button onClick={() => setShowCreate(true)} className="btn-primary !py-2 !px-4 text-sm whitespace-nowrap">+ Create Admin</button>
+        </div>
+      </div>
+
+      {msg && <div className={`px-4 py-3 rounded-xl border text-sm ${msg.type === "ok" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-600"}`}>{msg.text}</div>}
+
+      <div className="grid gap-3">
+        {filtered.map((a) => (
+          <div key={a.id} className="card p-4 flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-navy-900">{a.name}</span>
+                <span className={`text-xs px-2 py-1 rounded-full border capitalize ${roleBadge(a.role)}`}>{a.role.replace("_", " ")}</span>
+                {!a.isActive && <span className="text-xs px-2 py-1 rounded-full bg-red-50 border border-red-200 text-red-700">Deactivated</span>}
+                {a.mustChangePassword && <span className="text-xs px-2 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700">Must change password</span>}
+              </div>
+              <div className="text-sm text-slate-600 mt-1">{a.email} <span className="text-slate-400">• @{a.username}</span></div>
+              <div className="text-xs text-slate-500 mt-1">Created {new Date(a.createdAt).toLocaleDateString("en-IN")} • Updated {new Date(a.updatedAt).toLocaleDateString("en-IN")}</div>
+              <div className="mt-2 flex flex-wrap gap-1">
+                {(a.permissions && a.permissions.length > 0 ? a.permissions : (roleTabs[a.role as Role] || [])).map((p: string) => (
+                  <span key={p} className="text-[11px] px-2 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-600">{p}</span>
+                ))}
+                {(!a.permissions || a.permissions.length === 0) && <span className="text-[11px] px-2 py-1 rounded-full bg-slate-100 border text-slate-500">role default • {roleTabs[a.role as Role]?.length || 0} tabs</span>}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5 shrink-0">
+              <button onClick={() => setEditing({ ...a, permissions: a.permissions || [] })} className="px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs hover:bg-slate-50">Edit</button>
+              <button onClick={() => setResetTarget(a)} className="px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs hover:bg-amber-100">Reset PW</button>
+              <button onClick={() => del(a.id, a.email)} className="px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs text-red-600 hover:bg-red-50">Delete</button>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && <div className="card p-8 text-center text-sm text-slate-500">No admins match “{q}”</div>}
+      </div>
+
+      {showCreate && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm p-4 grid place-items-center" onClick={() => setShowCreate(false)}>
+          <div className="card w-full max-w-xl p-6 max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-navy-900">Create Admin</h3>
+              <button onClick={() => setShowCreate(false)} className="w-8 h-8 rounded-full bg-slate-100 grid place-items-center">✕</button>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">Email + password • they will be forced to change on first login. Configure role + per-tab permissions.</p>
+            <div className="mt-4 grid gap-3">
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium">Email *</label>
+                  <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@ayaaninstitute.in" className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium">Full Name *</label>
+                  <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g., Finance Officer" className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm" />
+                </div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium">Temporary Password *</label>
+                  <input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Min 6 chars" type="password" className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm" />
+                  <div className="text-[11px] text-amber-600 mt-1">User must change on first login</div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium">Role *</label>
+                  <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })} className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm bg-white">
+                    <option value="super_admin">super_admin — all tabs</option>
+                    <option value="finance">finance — dashboard, payments, finance, dues, expenses, orders, fees</option>
+                    <option value="admissions">admissions — dashboard, admissions, leads, students, alumni</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium">Per-tab Permissions (optional override)</label>
+                <div className="text-[11px] text-slate-500">If you select any, the admin will only see those tabs (instead of role defaults). Leave empty to use role defaults.</div>
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-1.5 p-3 rounded-xl bg-slate-50 border max-h-52 overflow-auto">
+                  {ADMIN_TABS.map((t) => (
+                    <label key={t.id} className="flex items-start gap-1.5 text-xs p-1.5 rounded hover:bg-white cursor-pointer border border-transparent hover:border-slate-200">
+                      <input type="checkbox" checked={form.permissions.includes(t.id)} onChange={() => togglePerm(t.id, form.permissions, (v) => setForm({ ...form, permissions: v }))} className="mt-0.5" />
+                      <span><span className="font-medium">{t.label}</span><span className="block text-[11px] text-slate-500">{t.desc}</span></span>
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-1 flex gap-2 text-xs">
+                  <button onClick={() => setForm({ ...form, permissions: ADMIN_TABS.map((t) => t.id) })} className="text-sky-700 hover:underline">Select all</button>
+                  <button onClick={() => setForm({ ...form, permissions: [] })} className="text-slate-500 hover:underline">Clear (use role defaults)</button>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} /> Active (can login)</label>
+              <div className="flex gap-2">
+                <button onClick={create} className="flex-1 btn-primary justify-center">Create Admin →</button>
+                <button onClick={() => setShowCreate(false)} className="px-4 py-2.5 rounded-full border text-sm">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editing && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm p-4 grid place-items-center" onClick={() => setEditing(null)}>
+          <div className="card w-full max-w-xl p-6 max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-navy-900">Edit {editing.email}</h3>
+              <button onClick={() => setEditing(null)} className="w-8 h-8 rounded-full bg-slate-100 grid place-items-center">✕</button>
+            </div>
+            <div className="mt-4 grid gap-3">
+              <div>
+                <label className="text-xs font-medium">Name</label>
+                <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-medium">Role</label>
+                <select value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value })} className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm bg-white">
+                  <option value="super_admin">super_admin</option>
+                  <option value="finance">finance</option>
+                  <option value="admissions">admissions</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium">Permissions (override role defaults)</label>
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-1.5 p-3 rounded-xl bg-slate-50 border max-h-52 overflow-auto">
+                  {ADMIN_TABS.map((t) => (
+                    <label key={t.id} className="flex items-start gap-1.5 text-xs p-1.5 rounded hover:bg-white cursor-pointer">
+                      <input type="checkbox" checked={editing.permissions?.includes(t.id)} onChange={() => togglePerm(t.id, editing.permissions || [], (v) => setEditing({ ...editing, permissions: v }))} className="mt-0.5" />
+                      <span><span className="font-medium">{t.label}</span><span className="block text-[11px] text-slate-500">{t.desc}</span></span>
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-1 flex gap-2 text-xs">
+                  <button onClick={() => setEditing({ ...editing, permissions: ADMIN_TABS.map((t) => t.id) })} className="text-sky-700 hover:underline">Select all</button>
+                  <button onClick={() => setEditing({ ...editing, permissions: [] })} className="text-slate-500 hover:underline">Clear (use role defaults)</button>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!editing.isActive} onChange={(e) => setEditing({ ...editing, isActive: e.target.checked })} /> Active</label>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!editing.mustChangePassword} onChange={(e) => setEditing({ ...editing, mustChangePassword: e.target.checked })} /> Must change password on next login</label>
+              <div className="flex gap-2">
+                <button onClick={saveEdit} className="flex-1 btn-primary justify-center">Save Changes →</button>
+                <button onClick={() => setEditing(null)} className="px-4 py-2.5 rounded-full border text-sm">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resetTarget && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm p-4 grid place-items-center" onClick={() => setResetTarget(null)}>
+          <div className="card w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-navy-900">Reset Password — {resetTarget.email}</h3>
+            <p className="text-xs text-slate-500 mt-1">Sets new temporary password and forces change on next login. Old sessions will be revoked.</p>
+            <input value={resetPw} onChange={(e) => setResetPw(e.target.value)} placeholder="New temporary password (min 6)" type="password" className="mt-4 w-full px-3 py-2.5 rounded-xl border text-sm" />
+            <div className="mt-4 flex gap-2">
+              <button onClick={reset} className="flex-1 btn-primary justify-center">Reset & Force Change →</button>
+              <button onClick={() => setResetTarget(null)} className="px-4 py-2.5 rounded-full border text-sm">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CarouselTab() {
+  const [slides, setSlides] = useState<any[]>([]);
+  const [q, setQ] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<any | null>(null);
+  const [form, setForm] = useState({ image: "", badge: "", title: "", highlight: "", desc: "", ctaLabel: "Learn More →", ctaHref: "/courses", cta2Label: "", cta2Href: "", accent: "from-sky-600 to-navy-900", order: 0, active: true });
+  const [uploading, setUploading] = useState(false);
+  const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  const load = () => fetch("/api/admin/carousel", { cache: "no-store" }).then((r) => r.json()).then((d) => Array.isArray(d) && setSlides(d)).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  const upload = async (file?: File) => {
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) return setMsg({ type: "err", text: "Image must be under 2MB" });
+    setUploading(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await fetch("/api/admin/carousel/upload", { method: "POST", body: fd });
+    const d = await r.json().catch(() => ({}));
+    setUploading(false);
+    if (r.ok && d.url) {
+      setForm({ ...form, image: d.url });
+      setMsg({ type: "ok", text: "Image uploaded — preview below" });
+    } else setMsg({ type: "err", text: d.error || "Upload failed" });
+  };
+
+  const save = async () => {
+    if (!form.image.trim()) return setMsg({ type: "err", text: "Image required — upload or paste URL" });
+    const payload: any = editing ? { id: editing.id, ...form } : form;
+    const r = await fetch("/api/admin/carousel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) {
+      setMsg({ type: "ok", text: editing ? "Updated" : "Created" });
+      setShowForm(false); setEditing(null); setForm({ image: "", badge: "", title: "", highlight: "", desc: "", ctaLabel: "Learn More →", ctaHref: "/courses", cta2Label: "", cta2Href: "", accent: "from-sky-600 to-navy-900", order: 0, active: true });
+      load();
+    } else setMsg({ type: "err", text: d.error || "Failed" });
+  };
+
+  const startEdit = (s: any) => {
+    setEditing(s);
+    setForm({ image: s.image, badge: s.badge || "", title: s.title || "", highlight: s.highlight || "", desc: s.desc || "", ctaLabel: s.ctaLabel || "", ctaHref: s.ctaHref || "", cta2Label: s.cta2Label || "", cta2Href: s.cta2Href || "", accent: s.accent || "from-sky-600 to-navy-900", order: s.order || 0, active: s.active !== false });
+    setShowForm(true);
+  };
+
+  const del = async (id: string) => {
+    if (!confirm("Delete this slide?")) return;
+    const r = await fetch(`/api/admin/carousel?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (r.ok) load(); else alert("Delete failed");
+  };
+
+  const toggle = async (s: any) => {
+    await fetch("/api/admin/carousel", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: s.id, active: !s.active }) });
+    load();
+  };
+
+  const move = async (s: any, dir: -1 | 1) => {
+    const sorted = [...slides].sort((a, b) => a.order - b.order);
+    const idx = sorted.findIndex((x) => x.id === s.id);
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    const a = sorted[idx], b = sorted[swapIdx];
+    await fetch("/api/admin/carousel", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: a.id, order: b.order }) });
+    await fetch("/api/admin/carousel", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: b.id, order: a.order }) });
+    load();
+  };
+
+  const filtered = slides.filter((s) => !q || `${s.title} ${s.badge} ${s.desc}`.toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <div className="grid gap-4">
+      <div className="card p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-navy-900">Carousel • {slides.length} slides</h2>
+          <p className="text-xs text-slate-500 mt-1">Upload images (JPG/PNG/WEBP ≤2MB) — stored in Supabase <b>carousel</b> bucket as files you can change anytime. No external links.</p>
+        </div>
+        <div className="flex gap-2">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="px-3 py-2 rounded-full border border-slate-200 text-sm w-36" />
+          <button onClick={() => { setEditing(null); setForm({ image: "", badge: "", title: "", highlight: "", desc: "", ctaLabel: "Learn More →", ctaHref: "/courses", cta2Label: "", cta2Href: "", accent: "from-sky-600 to-navy-900", order: slides.length, active: true }); setShowForm(true); }} className="btn-primary !py-2 !px-4 text-sm">+ New Slide</button>
+        </div>
+      </div>
+
+      {msg && <div className={`px-4 py-3 rounded-xl border text-sm ${msg.type === "ok" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-600"}`}>{msg.text}</div>}
+
+      <div className="grid gap-3">
+        {filtered.sort((a, b) => a.order - b.order).map((s) => (
+          <div key={s.id} className="card p-4 flex gap-4">
+            <img src={s.image} alt={s.title} className="w-40 h-24 object-cover rounded-xl border border-slate-200 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-navy-900 text-sm">{s.title || "Untitled"} <span className="font-light">{s.highlight}</span></span>
+                <span className="text-xs px-2 py-1 rounded-full border bg-slate-50">#{s.order}</span>
+                <span className={`text-xs px-2 py-1 rounded-full border ${s.active ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-slate-100 border-slate-200 text-slate-500"}`}>{s.active ? "active" : "hidden"}</span>
+              </div>
+              <div className="text-xs text-slate-500 mt-1">{s.badge}</div>
+              <div className="text-xs text-slate-600 mt-1 line-clamp-2">{s.desc}</div>
+              <div className="text-xs text-slate-500 mt-1">CTA: {s.ctaLabel} → {s.ctaHref} {s.cta2Label ? `• ${s.cta2Label} → ${s.cta2Href}` : ""}</div>
+            </div>
+            <div className="flex flex-col gap-1 shrink-0">
+              <div className="flex gap-1">
+                <button onClick={() => move(s, -1)} className="px-2 py-1 rounded-full bg-white border text-xs">↑</button>
+                <button onClick={() => move(s, 1)} className="px-2 py-1 rounded-full bg-white border text-xs">↓</button>
+              </div>
+              <button onClick={() => toggle(s)} className={`px-3 py-1.5 rounded-full text-xs border ${s.active ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-emerald-50 border-emerald-200 text-emerald-700"}`}>{s.active ? "Hide" : "Show"}</button>
+              <button onClick={() => startEdit(s)} className="px-3 py-1.5 rounded-full bg-white border text-xs">Edit</button>
+              <button onClick={() => del(s.id)} className="px-3 py-1.5 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs">Delete</button>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && <div className="card p-8 text-center text-sm text-slate-500">No slides. Create one → upload an image file.</div>}
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm p-4 grid place-items-center" onClick={() => setShowForm(false)}>
+          <div className="card w-full max-w-2xl p-6 max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-navy-900">{editing ? `Edit Slide #${editing.order}` : "New Slide — upload image file"}</h3>
+              <button onClick={() => setShowForm(false)} className="w-8 h-8 rounded-full bg-slate-100 grid place-items-center">✕</button>
+            </div>
+            <div className="mt-4 grid gap-3">
+              <div>
+                <label className="text-xs font-medium">Image * — upload file (JPG/PNG/WEBP ≤2MB)</label>
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => upload(e.target.files?.[0])} className="mt-1 w-full px-3 py-2 rounded-xl border text-sm bg-white" />
+                {uploading && <div className="text-xs text-sky-600 mt-1">Uploading…</div>}
+                {form.image && <img src={form.image} alt="preview" className="mt-2 w-full h-40 object-cover rounded-xl border" />}
+                <div className="text-[11px] text-slate-500 mt-1">Stored as file in Supabase <b>carousel</b> bucket — you can replace anytime. No external link needed.</div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div><label className="text-xs font-medium">Badge</label><input value={form.badge} onChange={(e) => setForm({ ...form, badge: e.target.value })} placeholder="SI • CONSTABLE • MOST DEMANDED" className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm" /></div>
+                <div><label className="text-xs font-medium">Accent</label><select value={form.accent} onChange={(e) => setForm({ ...form, accent: e.target.value })} className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm bg-white"><option value="from-sky-600 to-navy-900">Sky → Navy</option><option value="from-emerald-600 to-teal-800">Emerald → Teal</option><option value="from-amber-600 to-orange-700">Amber → Orange</option><option value="from-violet-600 to-indigo-800">Violet → Indigo</option><option value="from-slate-800 to-navy-900">Slate → Navy</option></select></div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div><label className="text-xs font-medium">Title</label><input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Wear the Khaki" className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm" /></div>
+                <div><label className="text-xs font-medium">Highlight</label><input value={form.highlight} onChange={(e) => setForm({ ...form, highlight: e.target.value })} placeholder="with Pride." className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm" /></div>
+              </div>
+              <div><label className="text-xs font-medium">Description</label><textarea value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} rows={2} placeholder="Telangana's No.1 …" className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm" /></div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div><label className="text-xs font-medium">CTA Label</label><input value={form.ctaLabel} onChange={(e) => setForm({ ...form, ctaLabel: e.target.value })} placeholder="Join SI Batch →" className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm" /></div>
+                <div><label className="text-xs font-medium">CTA Href</label><input value={form.ctaHref} onChange={(e) => setForm({ ...form, ctaHref: e.target.value })} placeholder="/admission" className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm" /></div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div><label className="text-xs font-medium">CTA2 Label (optional)</label><input value={form.cta2Label} onChange={(e) => setForm({ ...form, cta2Label: e.target.value })} placeholder="View Batches" className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm" /></div>
+                <div><label className="text-xs font-medium">CTA2 Href</label><input value={form.cta2Href} onChange={(e) => setForm({ ...form, cta2Href: e.target.value })} placeholder="/courses" className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm" /></div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div><label className="text-xs font-medium">Order</label><input type="number" min={0} value={form.order} onChange={(e) => setForm({ ...form, order: parseInt(e.target.value) || 0 })} className="mt-1 w-full px-3 py-2.5 rounded-xl border text-sm" /></div>
+                <label className="flex items-center gap-2 text-sm mt-6"><input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> Active</label>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={save} disabled={uploading} className="flex-1 btn-primary justify-center disabled:opacity-50">{editing ? "Update Slide →" : "Create Slide →"}</button>
+                <button onClick={() => setShowForm(false)} className="px-4 py-2.5 rounded-full border text-sm">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
