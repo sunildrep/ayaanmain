@@ -62,7 +62,9 @@ export default function AdminPage() {
   const allowedTabs = permissions && permissions.length > 0 ? (permissions as Tab[]) : (roleTabs[role] || roleTabs.super_admin);
 
   useEffect(() => {
-    fetch("/api/admin/login")
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 10000);
+    fetch("/api/admin/login", { signal: ctl.signal, cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         setAuth(!!d.authenticated);
@@ -76,7 +78,9 @@ export default function AdminPage() {
           if (!eff.includes(tab)) setTab(eff[0] || "dashboard");
         }
       })
-      .catch(() => setAuth(false));
+      .catch(() => setAuth(false))
+      .finally(() => clearTimeout(timer));
+    return () => { clearTimeout(timer); ctl.abort(); };
   }, []);
 
   useEffect(() => {

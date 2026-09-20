@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
+import { hashToken } from "@/lib/auth-helpers";
 
 const SESSION_EXPIRY_DAYS = 7;
 const ALLOWED_ADMIN_EMAIL = "sunil@drep.in";
@@ -64,11 +65,12 @@ export async function POST(req: NextRequest) {
     await prisma.admin.update({ where: { id: admin.id }, data: { supabaseId: userId } });
   }
 
-  // Create secured session (httpOnly, secure, sameSite strict)
+  // Create secured session (httpOnly, secure, sameSite strict) — hash token like /api/admin/login
   const tokenStr = crypto.randomBytes(32).toString("hex");
+  const hashed = hashToken(tokenStr);
   const expiresAt = new Date(Date.now() + SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
   await prisma.session.create({
-    data: { token: tokenStr, userId: admin.username, role: admin.role, username: admin.username, name: admin.name, expiresAt },
+    data: { token: hashed, userId: admin.id, role: admin.role, username: admin.username, name: admin.name, expiresAt },
   });
 
   // Sign out temp Supabase session
