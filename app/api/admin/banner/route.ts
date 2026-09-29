@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   const banner = await prisma.banner.findUnique({ where: { id: "main" } });
   return NextResponse.json(banner || { enabled: false, message: "", type: "info", link: "" }, { headers: { "Cache-Control": "no-store" } });

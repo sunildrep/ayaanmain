@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 
 const FALLBACK = ["Telugu", "English"];
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const list = await prisma.medium.findMany({ where: { active: true }, orderBy: { name: "asc" } });

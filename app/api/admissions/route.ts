@@ -6,6 +6,7 @@ import { newApplicationId, addMonths, audit } from "@/lib/identifiers";
 import { fallbackFee } from "@/lib/fees";
 import { isEmail, isPhone, sanitizeText } from "@/lib/validators";
 import { rateLimit, getClientIp } from "@/lib/rateLimit";
+import { sendEmail, tplAdmissionSubmitted } from "@/lib/email";
 async function getFee(course: string, mode: string, duration?: string, medium?: string, branch?: string) {
   try {
     // Lookup order: exact → peel branch → peel medium → peel duration → Base ("","","") → hardcoded fallback
@@ -35,11 +36,35 @@ export async function POST(req: NextRequest) {
   // Honeypot for bots — if filled, silently reject as success to avoid probing
   if (body.website || body.honeypot || body.url) return NextResponse.json({ ok: true, id: "HP-" + Date.now(), applicationId: "HP", status: "pending" });
 
-  const { name, fatherName, phone, email, address, reference, branch, course, courseType, medium, mode, batchId, durationId, addonIds, photo, payments } = body;
+  const { name, fatherName, phone, email, address, reference, aadharCardNumber, branch, course, courseType, medium, mode, batchId, durationId, addonIds, photo, payments } = body;
 
-  if (!name || !fatherName || !phone || !email || !address || !branch || !course) return NextResponse.json({ error: "name, fatherName, phone, email, address, branch, course required" }, { status: 400 });
+  if (!name || !fatherName || !phone || !email || !address || !branch || !course || !aadharCardNumber) return NextResponse.json({ error: "name, fatherName, phone, email, address, aadhar, branch, course required" }, { status: 400 });
   if (!isPhone(String(phone))) return NextResponse.json({ error: "phone must be 10 digits" }, { status: 400 });
   if (!isEmail(String(email))) return NextResponse.json({ error: "Valid email required" }, { status: 400 });
+  if (!/^[0-9]{12}$/.test(String(aadharCardNumber).trim())) return NextResponse.json({ error: "Aadhar must be 12 digits" }, { status: 400 });
+
+  // Branch validation — must exist and be active (admin Masters → Branches)
+  if (branch) {
+    const br = await prisma.branch.findFirst({ where: { name: String(branch).trim(), active: true } });
+    if (!br) return NextResponse.json({ error: "Invalid or inactive branch — please select from available branches" }, { status: 400 });
+  }
+  // Medium validation — must exist and be active
+  if (medium) {
+    const m = await prisma.medium.findFirst({ where: { name: String(medium).trim(), active: true } });
+    if (!m) return NextResponse.json({ error: "Invalid or inactive medium" }, { status: 400 });
+  }
+  // Course validation — must exist in Course table (by slug or title, case-insensitive)
+  if (course) {
+    const c = String(course).trim();
+    const exists = await prisma.course.findFirst({ where: { OR: [{ slug: c.toLowerCase() }, { title: c }, { slug: c }, { title: { equals: c, mode: "insensitive" } }] } });
+    // Allow legacy short codes like "SI" that map to courseDetails title parentheses; fallback check against fee configs short codes
+    if (!exists) {
+      const legacyCourses = ["SI", "Constable", "Groups", "SSC GD", "Defence", "Army", "UPSC", "Online"];
+      if (!legacyCourses.includes(c) && !legacyCourses.map((x) => x.toLowerCase()).includes(c.toLowerCase())) {
+        return NextResponse.json({ error: `Invalid course: ${c}` }, { status: 400 });
+      }
+    }
+  }
 
   // Duration (snapshot)
   let durationName = "3 Months";
@@ -139,6 +164,7 @@ export async function POST(req: NextRequest) {
       email: String(email).trim().toLowerCase(),
       address: sanitizeText(String(address), 500),
       reference: sanitizeText(String(reference || ""), 100),
+      aadharCardNumber: String(aadharCardNumber).trim(),
       branch: sanitizeText(String(branch), 100),
       course: sanitizeText(String(course), 50),
       courseType: sanitizeText(String(courseType || "Regular"), 20),
@@ -186,6 +212,12 @@ export async function POST(req: NextRequest) {
   );
 
   await audit("admission", entry.id, entry.email, "application_submitted", `Application ${applicationId}`);
+
+  // Email — admission status (pending review) — fire-and-forget, never blocks the response
+  try {
+    const tpl = tplAdmissionSubmitted(entry);
+    sendEmail({ to: entry.email, subject: tpl.subject, html: tpl.html }).catch(() => {});
+  } catch {}
 
   // NOTE: no user/student account is created here — only after admin approval.
   // correctionToken is returned once so the applicant can save their correction link (no portal access).

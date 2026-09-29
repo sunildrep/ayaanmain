@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { fallbackList } from "@/lib/fees";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const fees = await prisma.feeConfig.findMany({ orderBy: [{ course: "asc" }, { mode: "asc" }, { duration: "asc" }, { medium: "asc" }, { branch: "asc" }] });

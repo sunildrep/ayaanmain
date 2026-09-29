@@ -7,6 +7,8 @@ const FALLBACK = [
   { id: "hyderabad", name: "Hyderabad — Dilsukhnagar", address: "Chenna Complex, Near Metro Pillar 1542, Dilsukhnagar, Hyderabad", phone: "+91 88866 67222" },
 ];
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const branches = await prisma.branch.findMany({ where: { active: true }, orderBy: { name: "asc" } });
